@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Corpo Bem</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="Style.css">
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
@@ -48,8 +48,8 @@
 
         <section id="tab-metas" class="tab-content">
             <h2>Minhas Metas</h2>
-            <input type="text" placeholder="Nova meta (Ex: Correr 10km)">
-            <button>Adicionar Meta</button>
+            <input id="new-goal-input" type="text" placeholder="Nova meta (Ex: Correr 10km)">
+            <button onclick="addGoal()">Adicionar Meta</button>
         </section>
 
         <section id="tab-lojinha" class="tab-content">
