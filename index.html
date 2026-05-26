@@ -1,10 +1,430 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <title>Meu App de Treino e Metas</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0f1e" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Corpo Bem" />
+  <title>Corpo Bem</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-    <h1>Foco, força e código!</h1>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!--  AUTH SCREEN                               -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="screen-auth" class="screen active">
+    <div class="auth-bg">
+      <div class="auth-orb orb1"></div>
+      <div class="auth-orb orb2"></div>
+      <div class="auth-orb orb3"></div>
+    </div>
+    <div class="auth-container">
+      <div class="auth-logo">
+        <span class="logo-icon">⬡</span>
+        <h1>CORPO<span>BEM</span></h1>
+        <p class="logo-sub">Seu corpo. Sua jornada.</p>
+      </div>
+
+      <!-- Login Form -->
+      <div id="form-login" class="auth-form active">
+        <h2>Entrar</h2>
+        <div class="input-group">
+          <label>E-mail</label>
+          <input type="email" id="login-email" placeholder="seu@email.com" autocomplete="email" />
+        </div>
+        <div class="input-group">
+          <label>Senha</label>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <div id="auth-error" class="auth-error hidden"></div>
+        <button class="btn-primary" id="btn-login">Entrar</button>
+        <p class="auth-switch">Não tem conta? <span onclick="showRegister()">Criar Conta</span></p>
+      </div>
+
+      <!-- Register Form -->
+      <div id="form-register" class="auth-form">
+        <h2>Criar Conta</h2>
+        <div class="input-group">
+          <label>E-mail</label>
+          <input type="email" id="reg-email" placeholder="seu@email.com" autocomplete="email" />
+        </div>
+        <div class="input-group">
+          <label>Senha</label>
+          <input type="password" id="reg-password" placeholder="mínimo 6 caracteres" autocomplete="new-password" />
+        </div>
+        <div id="auth-error-reg" class="auth-error hidden"></div>
+        <button class="btn-primary" id="btn-register">Criar Conta</button>
+        <p class="auth-switch">Já tem conta? <span onclick="showLogin()">Entrar</span></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!--  ONBOARDING SCREEN                         -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="screen-onboarding" class="screen">
+    <div class="onboard-container">
+      <div class="onboard-progress">
+        <div class="progress-bar"><div class="progress-fill" id="ob-progress"></div></div>
+        <span id="ob-step-label">1 / 4</span>
+      </div>
+
+      <!-- Step 1: Nome -->
+      <div class="ob-step active" data-step="1">
+        <div class="ob-icon">👋</div>
+        <h2>Olá! Como você se chama?</h2>
+        <p>Vamos personalizar a sua experiência</p>
+        <div class="input-group">
+          <label>Nome de usuário</label>
+          <input type="text" id="ob-username" placeholder="Ex: Claudemir" />
+        </div>
+        <div class="input-group">
+          <label>Como devemos te chamar?</label>
+          <input type="text" id="ob-nickname" placeholder="Ex: Clau, Cláudio..." />
+        </div>
+      </div>
+
+      <!-- Step 2: Medidas -->
+      <div class="ob-step" data-step="2">
+        <div class="ob-icon">📏</div>
+        <h2>Suas medidas atuais</h2>
+        <p>Isso nos ajuda a acompanhar sua evolução</p>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Peso atual (kg)</label>
+            <input type="number" id="ob-weight" placeholder="75" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>Altura (cm)</label>
+            <input type="number" id="ob-height" placeholder="175" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Objetivo -->
+      <div class="ob-step" data-step="3">
+        <div class="ob-icon">🎯</div>
+        <h2>Qual é o seu objetivo?</h2>
+        <p>Escolha o que melhor descreve sua meta</p>
+        <div class="goal-cards">
+          <div class="goal-card" data-goal="ganhar" onclick="selectGoal(this)">
+            <span class="goal-emoji">💪</span>
+            <strong>Ganhar Peso</strong>
+            <small>Ganho de massa muscular</small>
+          </div>
+          <div class="goal-card" data-goal="perder" onclick="selectGoal(this)">
+            <span class="goal-emoji">🔥</span>
+            <strong>Perder Peso</strong>
+            <small>Emagrecimento saudável</small>
+          </div>
+          <div class="goal-card" data-goal="manter" onclick="selectGoal(this)">
+            <span class="goal-emoji">⚖️</span>
+            <strong>Manter Peso</strong>
+            <small>Saúde e bem-estar</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Frase -->
+      <div class="ob-step" data-step="4">
+        <div class="ob-icon">✨</div>
+        <h2>Sua frase de motivação</h2>
+        <p>Essa frase vai aparecer todo dia para te inspirar</p>
+        <div class="input-group">
+          <textarea id="ob-phrase" placeholder="Ex: Cada dia é uma oportunidade de ser melhor que ontem..." rows="3"></textarea>
+        </div>
+        <p class="ob-hint">💡 Escreva algo que vem do coração!</p>
+      </div>
+
+      <div class="ob-actions">
+        <button class="btn-secondary" id="ob-back" onclick="obBack()" style="display:none">Voltar</button>
+        <button class="btn-primary" id="ob-next" onclick="obNext()">Próximo →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!--  MAIN APP                                  -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="screen-app" class="screen">
+
+    <!-- ── SCREEN: HOME ── -->
+    <div id="page-home" class="page active">
+      <header class="app-header">
+        <div class="header-left">
+          <div class="avatar-wrap" onclick="navigateTo('perfil')">
+            <img id="profile-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=corpo" alt="avatar" />
+          </div>
+          <div>
+            <p class="header-greeting">Bem-vindo,</p>
+            <h2 class="header-name" id="dash-name">Usuário</h2>
+          </div>
+        </div>
+        <div class="header-right">
+          <div class="streak-badge" id="dash-streak">
+            <span class="streak-fire">🔥</span>
+            <span id="streak-count">0</span>
+            <small>dias</small>
+          </div>
+        </div>
+      </header>
+
+      <div class="page-scroll">
+        <!-- Motivational phrase -->
+        <div class="motivational-card">
+          <span class="quote-mark">"</span>
+          <p id="dash-phrase">Carregando sua frase...</p>
+        </div>
+
+        <!-- Water tracker -->
+        <div class="section-title">💧 Hidratação Diária</div>
+        <div class="water-card">
+          <div class="water-visual">
+            <div class="water-glass">
+              <div class="water-fill" id="water-fill">
+                <div class="water-wave"></div>
+              </div>
+              <div class="water-label" id="water-label">0ml</div>
+            </div>
+            <div class="water-meta">
+              <p id="water-ml">0 / 2400ml</p>
+              <p id="water-pct">0%</p>
+            </div>
+          </div>
+          <div class="water-btns">
+            <button class="btn-water" onclick="addWater(240)">+240ml</button>
+            <button class="btn-water" onclick="addWater(500)">+500ml</button>
+            <button class="btn-water-reset" onclick="resetWater()">↺ Reset</button>
+          </div>
+        </div>
+
+        <!-- Body Map -->
+        <div class="section-title">🏋️ Mapa Muscular</div>
+        <div class="body-map-card">
+          <p class="body-map-hint">Clique nos músculos que treinou hoje</p>
+          <div class="body-svg-wrap">
+            <svg viewBox="0 0 200 400" class="body-svg" xmlns="http://www.w3.org/2000/svg">
+              <!-- Head -->
+              <ellipse cx="100" cy="30" rx="22" ry="26" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part no-click" />
+              <!-- Neck -->
+              <rect x="91" y="54" width="18" height="14" rx="4" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part no-click" />
+              <!-- Shoulders -->
+              <ellipse cx="64" cy="78" rx="20" ry="12" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="ombros" onclick="toggleMuscle(this)" />
+              <ellipse cx="136" cy="78" rx="20" ry="12" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="ombros" onclick="toggleMuscle(this)" />
+              <!-- Chest -->
+              <path d="M78 68 Q100 80 122 68 L126 108 Q100 115 74 108 Z" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="peito" onclick="toggleMuscle(this)" />
+              <!-- Abs -->
+              <rect x="84" y="110" width="32" height="14" rx="5" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="abdomen" onclick="toggleMuscle(this)" />
+              <rect x="84" y="128" width="32" height="14" rx="5" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="abdomen" onclick="toggleMuscle(this)" />
+              <rect x="84" y="146" width="32" height="12" rx="5" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="abdomen" onclick="toggleMuscle(this)" />
+              <!-- Arms -->
+              <ellipse cx="51" cy="105" rx="11" ry="22" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="biceps" onclick="toggleMuscle(this)" />
+              <ellipse cx="149" cy="105" rx="11" ry="22" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="biceps" onclick="toggleMuscle(this)" />
+              <!-- Forearms -->
+              <ellipse cx="44" cy="148" rx="9" ry="20" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="antebraco" onclick="toggleMuscle(this)" />
+              <ellipse cx="156" cy="148" rx="9" ry="20" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="antebraco" onclick="toggleMuscle(this)" />
+              <!-- Quads -->
+              <ellipse cx="87" cy="225" rx="18" ry="38" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="quadriceps" onclick="toggleMuscle(this)" />
+              <ellipse cx="113" cy="225" rx="18" ry="38" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="quadriceps" onclick="toggleMuscle(this)" />
+              <!-- Calves -->
+              <ellipse cx="87" cy="305" rx="13" ry="28" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="panturrilha" onclick="toggleMuscle(this)" />
+              <ellipse cx="113" cy="305" rx="13" ry="28" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="panturrilha" onclick="toggleMuscle(this)" />
+              <!-- Hips -->
+              <path d="M74 162 Q100 172 126 162 L128 195 Q100 202 72 195 Z" fill="var(--body-base)" stroke="var(--body-stroke)" stroke-width="1.5" class="body-part muscle" data-muscle="gluteos" onclick="toggleMuscle(this)" />
+            </svg>
+          </div>
+          <div class="muscle-tags" id="muscle-tags"></div>
+        </div>
+
+        <!-- Today's goals preview -->
+        <div class="section-title">✅ Metas de Hoje</div>
+        <div class="goals-preview" id="goals-preview-home">
+          <p class="empty-state">Vá até Metas para adicionar objetivos!</p>
+        </div>
+        <div style="height: 90px"></div>
+      </div>
+    </div>
+
+    <!-- ── SCREEN: METAS ── -->
+    <div id="page-metas" class="page">
+      <header class="app-header">
+        <h2>Minhas Metas</h2>
+        <span class="header-date" id="metas-date"></span>
+      </header>
+      <div class="page-scroll">
+        <div class="add-goal-form">
+          <input type="text" id="new-goal-text" placeholder="Ex: 100 flexões hoje..." />
+          <button class="btn-add" onclick="addGoal()">+</button>
+        </div>
+        <div id="goals-list"></div>
+        <div style="height: 90px"></div>
+      </div>
+    </div>
+
+    <!-- ── SCREEN: LOJINHA ── -->
+    <div id="page-lojinha" class="page">
+      <header class="app-header">
+        <h2>Lojinha 🛍️</h2>
+        <div class="coins-display"><span>🪙</span><span id="coin-count">0</span></div>
+      </header>
+      <div class="page-scroll">
+        <p class="section-hint">Complete metas diárias para ganhar moedas e resgatar seus desejos!</p>
+
+        <div class="section-title">Adicionar Desejo</div>
+        <div class="add-reward-form">
+          <input type="text" id="reward-name" placeholder="Ex: Pizza de pepperoni..." />
+          <input type="number" id="reward-cost" placeholder="Custo (moedas)" min="1" />
+          <button class="btn-primary small" onclick="addReward()">Adicionar</button>
+        </div>
+
+        <div class="section-title">Seus Desejos</div>
+        <div id="rewards-list"></div>
+        <div style="height: 90px"></div>
+      </div>
+    </div>
+
+    <!-- ── SCREEN: PERFIL ── -->
+    <div id="page-perfil" class="page">
+      <header class="app-header">
+        <h2>Meu Perfil</h2>
+        <button class="btn-darkmode" id="btn-darkmode" onclick="toggleDarkMode()">🌙</button>
+      </header>
+      <div class="page-scroll">
+        <!-- Avatar -->
+        <div class="profile-avatar-section">
+          <div class="avatar-large-wrap">
+            <img id="profile-avatar-large" src="https://api.dicebear.com/7.x/adventurer/svg?seed=corpo" alt="avatar" />
+            <button class="avatar-edit-btn" onclick="document.getElementById('avatar-upload').click()">📷</button>
+            <input type="file" id="avatar-upload" accept="image/*" style="display:none" onchange="handleAvatarChange(event)" />
+          </div>
+          <h3 id="profile-username">Usuário</h3>
+          <p id="profile-goal-badge" class="goal-badge">🎯 Meta: —</p>
+        </div>
+
+        <!-- Phrase edit -->
+        <div class="profile-section">
+          <div class="section-title">Frase de Motivação</div>
+          <div class="phrase-edit">
+            <textarea id="profile-phrase" rows="3" placeholder="Sua frase aqui..."></textarea>
+            <button class="btn-save" onclick="savePhrase()">Salvar</button>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="profile-section">
+          <div class="section-title">Evolução</div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <small>Peso Inicial</small>
+              <strong id="stat-weight-initial">—</strong>
+              <small>kg</small>
+            </div>
+            <div class="stat-card accent">
+              <small>Peso Atual</small>
+              <strong id="stat-weight-current">—</strong>
+              <small>kg</small>
+            </div>
+            <div class="stat-card">
+              <small>Altura Inicial</small>
+              <strong id="stat-height-initial">—</strong>
+              <small>cm</small>
+            </div>
+            <div class="stat-card accent">
+              <small>Altura Atual</small>
+              <strong id="stat-height-current">—</strong>
+              <small>cm</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Streak info -->
+        <div class="profile-section">
+          <div class="section-title">Sequência</div>
+          <div class="streak-info">
+            <span class="streak-big">🔥</span>
+            <div>
+              <strong id="profile-streak">0 dias seguidos</strong>
+              <p>Continue assim! Não quebre a sequência.</p>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-logout" onclick="logout()">Sair da conta</button>
+        <div style="height: 90px"></div>
+      </div>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-page="home" onclick="navigateTo('home')">
+        <span class="nav-icon">🏠</span>
+        <span>Início</span>
+      </button>
+      <button class="nav-btn" data-page="metas" onclick="navigateTo('metas')">
+        <span class="nav-icon">🎯</span>
+        <span>Metas</span>
+      </button>
+      <button class="nav-btn" data-page="lojinha" onclick="navigateTo('lojinha')">
+        <span class="nav-icon">🛍️</span>
+        <span>Lojinha</span>
+      </button>
+      <button class="nav-btn" data-page="perfil" onclick="navigateTo('perfil')">
+        <span class="nav-icon">👤</span>
+        <span>Perfil</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!--  WEEKLY CHECK-IN MODAL                     -->
+  <!-- ══════════════════════════════════════════ -->
+  <div id="modal-checkin" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-icon">📊</div>
+      <h3>Check-in Semanal</h3>
+      <p>Como você está? Vamos atualizar suas medidas!</p>
+      <div class="input-row">
+        <div class="input-group">
+          <label>Peso atual (kg)</label>
+          <input type="number" id="ci-weight" placeholder="75" step="0.1" />
+        </div>
+        <div class="input-group">
+          <label>Altura (cm)</label>
+          <input type="number" id="ci-height" placeholder="175" />
+        </div>
+      </div>
+      <div class="input-group">
+        <label>Como você está se sentindo?</label>
+        <div class="mood-btns">
+          <button class="mood-btn" data-mood="ótimo" onclick="selectMood(this)">😄 Ótimo</button>
+          <button class="mood-btn" data-mood="bem" onclick="selectMood(this)">🙂 Bem</button>
+          <button class="mood-btn" data-mood="regular" onclick="selectMood(this)">😐 Regular</button>
+          <button class="mood-btn" data-mood="mal" onclick="selectMood(this)">😔 Mal</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeCheckin()">Depois</button>
+        <button class="btn-primary" onclick="saveCheckin()">Salvar ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!--  CONFETTI CANVAS                           -->
+  <!-- ══════════════════════════════════════════ -->
+  <canvas id="confetti-canvas" style="position:fixed;top:0;left:0;pointer-events:none;z-index:9999;width:100%;height:100%"></canvas>
+
+  <!-- Firebase SDK -->
+  <script type="module" src="app.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 </body>
 </html>
