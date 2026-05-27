@@ -1,9 +1,9 @@
 // Importações do Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// Configuração do Firebase conforme a sua imagem
+// Configuração do Firebase
 const firebaseConfig = {
     apiKey: "AIzaSyAFyeYwj7w92L-h8wrDDwU4kP4lSiB15OM",
     authDomain: "web-treino.firebaseapp.com",
@@ -13,65 +13,503 @@ const firebaseConfig = {
     appId: "1:249708014404:web:63ed1e93a8f83a0f808511"
 };
 
-// Inicializa o Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 console.log("Firebase conectado com sucesso!");
 
-// ===== LÓGICA DE INTERFACE ===== //
+// ===== ESTADO GLOBAL =====
+let currentUser = null;
+let userData = {};
+let currentOnboardingStep = 'weight';
+let tempOnboardingData = {};
 
-// Simula Login e vai para o App
-window.login = async function() {
-    const username = document.getElementById('username').value.trim();
-    const displayname = document.getElementById('displayname').value.trim() || "Atleta";
-    const password = document.getElementById('password').value;
+// ===== TELAS E NAVEGAÇÃO =====
+window.showLogin = function() {
+    document.getElementById('login-screen').classList.add('active');
+    document.getElementById('signup-screen').classList.remove('active');
+    document.getElementById('onboarding-screen').classList.remove('active');
+    document.getElementById('main-app').classList.remove('active');
+}
+
+window.showSignup = function() {
+    document.getElementById('login-screen').classList.remove('active');
+    document.getElementById('signup-screen').classList.add('active');
+    document.getElementById('onboarding-screen').classList.remove('active');
+    document.getElementById('main-app').classList.remove('active');
+}
+
+window.showOnboarding = function() {
+    currentOnboardingStep = 'weight';
+    tempOnboardingData = {};
+    document.getElementById('login-screen').classList.remove('active');
+    document.getElementById('signup-screen').classList.remove('active');
+    document.getElementById('onboarding-screen').classList.add('active');
+    document.getElementById('main-app').classList.remove('active');
+    showOnboardingStep('weight');
+}
+
+window.showApp = function() {
+    document.getElementById('login-screen').classList.remove('active');
+    document.getElementById('signup-screen').classList.remove('active');
+    document.getElementById('onboarding-screen').classList.remove('active');
+    document.getElementById('main-app').classList.add('active');
+}
+
+// ===== AUTENTICAÇÃO =====
+window.goLogin = async function() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
     if(!username || !password) { alert('Preencha usuário e senha'); return; }
+
+    const email = `${username}@webtreino.local`;
+    try {
+        const userCred = await signInWithEmailAndPassword(auth, email, password);
+        currentUser = userCred.user;
+        await loadUserData(userCred.user.uid);
+        showApp();
+        loadAllData();
+    } catch (err) {
+        alert('Erro ao entrar: ' + err.message);
+    }
+}
+
+window.goSignup = async function() {
+    const username = document.getElementById('signup-username').value.trim();
+    const displayname = document.getElementById('signup-displayname').value.trim();
+    const password = document.getElementById('signup-password').value;
+    const confirmPassword = document.getElementById('signup-password-confirm').value;
+
+    if(!username || !displayname || !password || !confirmPassword) {
+        alert('Preencha todos os campos');
+        return;
+    }
+    if(password !== confirmPassword) {
+        alert('Senhas não coincidem');
+        return;
+    }
 
     const email = `${username}@webtreino.local`;
     try {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCred.user, { displayName: displayname });
-        await saveUserDataToFirestore(userCred.user.uid, { username, displayname });
-        await currentUserSetup(userCred.user);
+        currentUser = userCred.user;
+        await setDoc(doc(db, 'users', userCred.user.uid), { username, displayname, createdAt: Date.now() }, { merge: true });
+        showOnboarding();
     } catch (err) {
-        if(err.code === 'auth/email-already-in-use') {
-            try {
-                const signIn = await signInWithEmailAndPassword(auth, email, password);
-                await currentUserSetup(signIn.user);
-            } catch(signErr) { alert('Erro ao entrar: ' + signErr.message); }
-        } else {
-            alert('Erro: ' + err.message);
-        }
+        alert('Erro ao criar conta: ' + err.message);
     }
 }
 
-async function saveUserDataToFirestore(uid, data) {
+window.loginWithGoogle = function() {
+    alert('Login com Google ainda não implementado. Use username/senha por enquanto.');
+}
+
+window.loginWithGoogleSignup = function() {
+    alert('Login com Google ainda não implementado. Use username/senha por enquanto.');
+}
+
+window.goForgotPassword = function() {
+    alert('Função "Esqueceu a Senha" ainda não implementada.');
+}
+
+async function loadUserData(uid) {
     try {
-        await setDoc(doc(db, 'users', uid), data, { merge: true });
-    } catch(e) { console.error('Erro salvando usuário', e); }
+        const doc_snap = await getDoc(doc(db, 'users', uid));
+        if(doc_snap.exists()) {
+            userData = doc_snap.data();
+        }
+    } catch(e) {
+        console.error('Erro carregando dados do usuário', e);
+    }
 }
 
-async function currentUserSetup(user) {
-    const uid = user.uid;
-    // Perguntar peso, altura e objetivo
-    const kg = prompt('Qual seu peso inicial (kg)?', '80');
-    const altura = prompt('Qual sua altura (m)?', '1.75');
-    const objetivo = prompt('O que deseja alcançar? (mais peso / menos peso)', 'menos peso');
-    const frase = prompt('Digite uma frase para motivação (ex: "Força e foco")', 'A dor de hoje é a força de amanhã.');
-
-    await saveUserDataToFirestore(uid, { kgInicial: kg, alturaInicial: altura, objetivo, frase, sequence: 0, water: 0 });
-
-    document.getElementById('greeting').innerText = `Bem vindo(a), ${user.displayName || 'Atleta'}!`;
-    document.getElementById('auth-screen').classList.remove('active');
-    document.getElementById('main-app').classList.add('active');
-
-    loadProfilePhrase(uid);
-    loadGoals(uid);
-    loadWater(uid);
+// ===== ONBOARDING =====
+window.showOnboardingStep = function(step) {
+    document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
+    document.getElementById(`step-${step}`).style.display = 'block';
+    currentOnboardingStep = step;
 }
 
-// Alternar entre abas
+window.nextOnboardingStep = function(from) {
+    if(from === 'weight') {
+        const weight = document.getElementById('onboard-weight').value;
+        if(!weight) { alert('Digite seu peso'); return; }
+        tempOnboardingData.kgInicial = parseFloat(weight);
+        showOnboardingStep('height');
+    } else if(from === 'height') {
+        const height = document.getElementById('onboard-height').value;
+        if(!height || !isValidHeight(height)) { alert('Digite uma altura válida (ex: 1.80)'); return; }
+        tempOnboardingData.alturaInicial = formatHeight(height);
+        showOnboardingStep('goal');
+    } else if(from === 'target-weight') {
+        const targetWeight = document.getElementById('onboard-target-weight').value;
+        if(!targetWeight) { alert('Digite seu peso alvo'); return; }
+        tempOnboardingData.kgAlvo = parseFloat(targetWeight);
+        showOnboardingStep('target-height');
+    } else if(from === 'target-height') {
+        const targetHeight = document.getElementById('onboard-target-height').value;
+        if(!targetHeight || !isValidHeight(targetHeight)) { alert('Digite uma altura válida'); return; }
+        tempOnboardingData.alturaAlvo = formatHeight(targetHeight);
+        showOnboardingStep('phrase');
+    }
+}
+
+window.selectObjective = function(obj) {
+    tempOnboardingData.objetivo = obj;
+    if(obj === 'perder') {
+        showOnboardingStep('target-weight');
+    } else if(obj === 'ganhar') {
+        showOnboardingStep('target-weight');
+    } else {
+        // manter: pula para frase
+        showOnboardingStep('phrase');
+    }
+}
+
+window.finishOnboarding = async function() {
+    const phrase = document.getElementById('onboard-phrase').value || 'A dor de hoje é a força de amanhã.';
+    tempOnboardingData.frase = phrase;
+    tempOnboardingData.kgAtual = tempOnboardingData.kgInicial;
+    tempOnboardingData.alturaAtual = tempOnboardingData.alturaInicial;
+    tempOnboardingData.sequencia = 0;
+    tempOnboardingData.ultimoAcesso = new Date().toISOString().split('T')[0];
+
+    const uid = currentUser.uid;
+    try {
+        await setDoc(doc(db, 'users', uid), tempOnboardingData, { merge: true });
+        userData = tempOnboardingData;
+        showApp();
+        loadAllData();
+    } catch(e) {
+        alert('Erro ao salvar dados: ' + e.message);
+    }
+}
+
+function isValidHeight(h) {
+    const parsed = parseFloat(h);
+    return parsed >= 1.0 && parsed <= 2.5;
+}
+
+function formatHeight(h) {
+    const p = parseFloat(h);
+    if(!isNaN(p)) {
+        return p.toFixed(2);
+    }
+    return h;
+}
+
+// ===== CARREGAMENTO INICIAL =====
+window.onload = function() {
+    onAuthStateChanged(auth, async (user) => {
+        if(user) {
+            currentUser = user;
+            await loadUserData(user.uid);
+            showApp();
+            loadAllData();
+        } else {
+            showLogin();
+        }
+    });
+
+    const savedPic = localStorage.getItem('profilePic');
+    if(savedPic && document.getElementById('profile-img')) {
+        document.getElementById('profile-img').src = savedPic;
+    }
+}
+
+// ===== METAS (GOALS) =====
+window.addGoal = async function() {
+    const input = document.getElementById('new-goal-input');
+    const text = input.value.trim();
+    if(!text) return alert('Digite uma meta');
+
+    const goal = {
+        text,
+        createdAt: Date.now(),
+        target: parseGoalTarget(text) || 1,
+        current: 0,
+        unit: detectGoalUnit(text)
+    };
+
+    if(currentUser) {
+        try {
+            await addDoc(collection(db, 'users', currentUser.uid, 'goals'), goal);
+            input.value = '';
+            loadGoals();
+        } catch(e) { console.error(e); alert('Erro ao adicionar meta'); }
+    }
+}
+
+function parseGoalTarget(text) {
+    const match = text.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+}
+
+function detectGoalUnit(text) {
+    const lower = text.toLowerCase();
+    if(lower.includes('água') || lower.includes('ml') || lower.includes('litro')) return 'ml';
+    if(lower.includes('flexão') || lower.includes('abdominais') || lower.includes('séries')) return 'reps';
+    if(lower.includes('km') || lower.includes('correr')) return 'km';
+    return 'qty';
+}
+
+async function loadGoals() {
+    if(!currentUser) return;
+    const container = document.getElementById('goals-container');
+    const list = document.getElementById('goals-list');
+    
+    try {
+        const snap = await getDocs(collection(db, 'users', currentUser.uid, 'goals'));
+        if(snap.empty) {
+            container.innerHTML = '<div style="text-align: center; color: var(--text-color); margin-top: 30px;"><p>Nenhuma meta adicionada ainda.</p><p style="font-size: 12px; color: var(--neon-dark);">Vá para <strong>Metas</strong> para adicionar!</p></div>';
+            list.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = '';
+        list.innerHTML = '';
+        const goals = [];
+        snap.forEach(doc => {
+            goals.push({ id: doc.id, ...doc.data() });
+        });
+
+        goals.forEach(g => {
+            const el = createGoalCard(g);
+            container.appendChild(el);
+            list.appendChild(el.cloneNode(true));
+        });
+    } catch(e) { console.error(e); }
+}
+
+function createGoalCard(g) {
+    const card = document.createElement('div');
+    card.className = 'card neon-border goal-card';
+    const percent = (g.current / g.target) * 100;
+    const unit = g.unit === 'ml' ? 'ml' : g.unit === 'reps' ? 'reps' : g.unit === 'km' ? 'km' : '';
+
+    card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div>
+                <h4>${g.text}</h4>
+                <p style="font-size: 12px; color: var(--neon-dark);">${g.current} ${unit} / ${g.target} ${unit}</p>
+            </div>
+            <button onclick="deleteGoal('${g.id}')" class="btn-delete">✕</button>
+        </div>
+        <div class="progress-container">
+            <div class="progress-bar"><div class="fill" style="width: ${percent}%;"></div></div>
+        </div>
+        <button onclick="openProgressModal('${g.id}', '${g.text}', ${g.target}, ${g.current}, '${g.unit}')" class="btn-small">+</button>
+    `;
+    return card;
+}
+
+window.deleteGoal = async function(id) {
+    if(!confirm('Deletar essa meta?')) return;
+    if(!currentUser) return;
+    try {
+        await deleteDoc(doc(db, 'users', currentUser.uid, 'goals', id));
+        loadGoals();
+    } catch(e) { console.error(e); }
+}
+
+let currentGoalData = {};
+window.openProgressModal = function(id, text, target, current, unit) {
+    currentGoalData = { id, text, target, current, unit };
+    document.getElementById('modal-goal-title').innerText = `Adicionar a "${text}"`;
+    document.getElementById('modal-progress-input').value = '';
+    document.getElementById('modal-progress-input').placeholder = `Digite a quantidade em ${unit}`;
+    document.getElementById('modal-add-progress').style.display = 'block';
+}
+
+window.saveProgress = async function() {
+    const amount = parseFloat(document.getElementById('modal-progress-input').value);
+    if(isNaN(amount) || amount <= 0) {
+        alert('Digite uma quantidade válida');
+        return;
+    }
+
+    const newCurrent = Math.min(currentGoalData.current + amount, currentGoalData.target);
+    if(!currentUser) return;
+
+    try {
+        await updateDoc(doc(db, 'users', currentUser.uid, 'goals', currentGoalData.id), {
+            current: newCurrent
+        });
+
+        if(newCurrent >= currentGoalData.target) {
+            dispararConfetes();
+            alert('🎉 Meta cumprida! Parabéns!');
+        }
+
+        closeModal('modal-add-progress');
+        loadGoals();
+    } catch(e) { console.error(e); }
+}
+
+// ===== RECOMPENSAS (REWARDS) =====
+window.showAddReward = function() {
+    document.getElementById('modal-add-reward').style.display = 'block';
+}
+
+window.createReward = async function() {
+    const title = document.getElementById('reward-title').value.trim();
+    const goal = document.getElementById('reward-goal').value.trim();
+    if(!title || !goal) { alert('Preencha todos os campos'); return; }
+
+    const reward = { title, goal, createdAt: Date.now(), completed: false };
+    if(!currentUser) return;
+
+    try {
+        await addDoc(collection(db, 'users', currentUser.uid, 'rewards'), reward);
+        closeModal('modal-add-reward');
+        loadRewards();
+    } catch(e) { console.error(e); }
+}
+
+async function loadRewards() {
+    if(!currentUser) return;
+    const list = document.getElementById('rewards-list');
+    list.innerHTML = '';
+
+    try {
+        const snap = await getDocs(collection(db, 'users', currentUser.uid, 'rewards'));
+        if(snap.empty) {
+            list.innerHTML = '<p style="text-align: center; color: var(--neon-dark);">Nenhuma recompensa criada ainda.</p>';
+            return;
+        }
+
+        snap.forEach(doc => {
+            const r = doc.data();
+            const card = document.createElement('div');
+            card.className = 'card neon-border';
+            card.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div>
+                        <h4>${r.title}</h4>
+                        <p style="font-size: 12px; color: var(--neon-dark);">Se você: ${r.goal}</p>
+                    </div>
+                    <button onclick="markRewardCompleted('${doc.id}')" class="btn-small">${r.completed ? '✓' : 'Marcar'}</button>
+                </div>
+            `;
+            list.appendChild(card);
+        });
+    } catch(e) { console.error(e); }
+}
+
+window.markRewardCompleted = async function(id) {
+    if(!currentUser) return;
+    try {
+        await updateDoc(doc(db, 'users', currentUser.uid, 'rewards', id), {
+            completed: true
+        });
+        dispararConfetes();
+        loadRewards();
+    } catch(e) { console.error(e); }
+}
+
+// ===== PERFIL =====
+window.showEditProfile = function() {
+    document.getElementById('edit-username').value = userData.username || '';
+    document.getElementById('edit-phrase').value = userData.frase || '';
+    document.getElementById('modal-edit-profile').style.display = 'block';
+}
+
+window.saveProfileChanges = async function() {
+    const newUsername = document.getElementById('edit-username').value.trim();
+    const newPhrase = document.getElementById('edit-phrase').value.trim();
+
+    if(!currentUser) return;
+    try {
+        const updates = {};
+        if(newUsername) updates.username = newUsername;
+        if(newPhrase) updates.frase = newPhrase;
+
+        if(Object.keys(updates).length > 0) {
+            await setDoc(doc(db, 'users', currentUser.uid), updates, { merge: true });
+            userData = { ...userData, ...updates };
+        }
+
+        closeModal('modal-edit-profile');
+        loadProfileData();
+    } catch(e) { console.error(e); }
+}
+
+window.salvarFoto = function(event) {
+    const file = event.target.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const base64 = e.target.result;
+        document.getElementById('profile-img').src = base64;
+        localStorage.setItem('profilePic', base64);
+
+        if(currentUser) {
+            try {
+                await setDoc(doc(db, 'users', currentUser.uid), { profilePic: base64 }, { merge: true });
+            } catch(e) { console.error(e); }
+        }
+    };
+    reader.readAsDataURL(file);
+}
+
+function loadProfileData() {
+    const w = userData.kgInicial || '--';
+    const h = userData.alturaInicial || '--';
+    const wa = userData.kgAtual || w;
+    const ha = userData.alturaAtual || h;
+    const obj = userData.objetivo ? (userData.objetivo === 'perder' ? '📉 Perder Peso' : userData.objetivo === 'ganhar' ? '📈 Ganhar Peso' : '⚖️ Manter') : '--';
+
+    document.getElementById('profile-weight-initial').innerText = `${w} kg`;
+    document.getElementById('profile-height').innerText = `${h} m`;
+    document.getElementById('profile-weight-current').innerText = `${wa} kg`;
+    document.getElementById('profile-objetivo').innerText = obj;
+    document.querySelector('.quote').innerText = userData.frase || 'A dor de hoje é a força de amanhã.';
+}
+
+// ===== SEQUÊNCIA E DADOS =====
+async function updateStreak() {
+    if(!currentUser) return;
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const lastAccess = userData.ultimoAcesso;
+
+        if(lastAccess !== today) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+            if(lastAccess === yesterdayStr) {
+                // Continua sequência
+                userData.sequencia = (userData.sequencia || 0) + 1;
+            } else {
+                // Reset sequência
+                userData.sequencia = 1;
+            }
+
+            userData.ultimoAcesso = today;
+            await setDoc(doc(db, 'users', currentUser.uid), { sequencia: userData.sequencia, ultimoAcesso: today }, { merge: true });
+        }
+
+        document.getElementById('streak-count').innerText = userData.sequencia || 0;
+    } catch(e) { console.error(e); }
+}
+
+async function loadAllData() {
+    if(!currentUser) return;
+    const uid = currentUser.uid;
+
+    document.getElementById('greeting').innerText = `Bem vindo(a), ${currentUser.displayName || 'Atleta'}!`;
+    
+    await loadUserData(uid);
+    await updateStreak();
+    loadGoals();
+    loadRewards();
+    loadProfileData();
+}
+
+// ===== INTERFACE =====
 window.switchTab = function(tabId) {
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
@@ -79,183 +517,36 @@ window.switchTab = function(tabId) {
     document.getElementById(`tab-${tabId}`).classList.add('active');
 }
 
-// Dark/Light Mode
 window.toggleDarkMode = function() {
     document.body.classList.toggle('light-mode');
+    localStorage.setItem('darkMode', document.body.classList.contains('light-mode') ? 'true' : 'false');
 }
 
-// Lógica de beber água com barra de progresso CSS
-let totalAgua = 0;
-const metaAgua = 2000; // 2 litros
+window.closeModal = function(modalId) {
+    document.getElementById(modalId).style.display = 'none';
+}
 
-window.addWater = async function(quantidade) {
-    totalAgua += quantidade;
-    if(totalAgua > metaAgua) totalAgua = metaAgua;
-
-    document.getElementById('water-text').innerText = totalAgua;
-
-    let porcentagem = (totalAgua / metaAgua) * 100;
-    document.getElementById('water-fill').style.width = `${porcentagem}%`;
-
-    const user = auth.currentUser;
-    if(user) {
-        try { await setDoc(doc(db, 'users', user.uid), { water: totalAgua }, { merge: true }); } catch(e) { console.error(e); }
-    } else {
-        localStorage.setItem('water', totalAgua);
+// Fechar modal ao clicar fora
+document.addEventListener('click', function(e) {
+    if(e.target.classList.contains('modal')) {
+        e.target.style.display = 'none';
     }
+});
 
-    if(totalAgua === metaAgua) dispararConfetes();
-}
-
-// Salvar Foto de Perfil no LocalStorage (sem gastar banco de dados)
-window.onload = function() {
-    const savedPic = localStorage.getItem('profilePic');
-    if(savedPic) {
-        document.getElementById('profile-img').src = savedPic;
-    }
-
-    onAuthStateChanged(auth, async (user) => {
-        if(user) {
-            document.getElementById('greeting').innerText = `Bem vindo(a), ${user.displayName || 'Atleta'}!`;
-            document.getElementById('auth-screen').classList.remove('active');
-            document.getElementById('main-app').classList.add('active');
-            loadProfilePhrase(user.uid);
-            loadGoals(user.uid);
-            loadWater(user.uid);
-        }
-    });
-}
-
-window.salvarFoto = function(event) {
-    const file = event.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const base64Image = e.target.result;
-            document.getElementById('profile-img').src = base64Image;
-            localStorage.setItem('profilePic', base64Image); // Salva no dispositivo
-            const user = auth.currentUser;
-            if(user) { setDoc(doc(db, 'users', user.uid), { profilePic: base64Image }, { merge: true }).catch(e=>console.error(e)); }
-        };
-        reader.readAsDataURL(file);
-    }
-}
-
-// Efeito Confete usando a biblioteca canvas-confetti importada no HTML
-window.concluirMetas = function() {
-    dispararConfetes();
-}
-
+// ===== CONFETE =====
 function dispararConfetes() {
     confetti({
         particleCount: 150,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ['#00e5ff', '#005bb5', '#ffffff'] // Cores combinando com o tema
+        colors: ['#00e5ff', '#005bb5', '#ffffff']
     });
 }
 
-// --- Metas (Goals) ---
-window.addGoal = async function() {
-    const input = document.getElementById('new-goal-input');
-    const text = input.value.trim();
-    if(!text) return alert('Digite uma meta.');
-    const target = parseTargetFromText(text) || 1;
-    const goal = { text, target, current: 0, createdAt: Date.now() };
-    const user = auth.currentUser;
-    if(user) {
-        try {
-            await addDoc(collection(db, 'users', user.uid, 'goals'), goal);
-            input.value = '';
-            loadGoals(user.uid);
-        } catch(e) { console.error(e); }
-    } else {
-        // fallback local
-        const local = JSON.parse(localStorage.getItem('localGoals') || '[]');
-        local.push(goal);
-        localStorage.setItem('localGoals', JSON.stringify(local));
-        input.value = '';
-        renderLocalGoals(local);
+// Recuperar dark mode
+window.addEventListener('load', function() {
+    const isDarkMode = localStorage.getItem('darkMode') === 'false';
+    if(!isDarkMode) {
+        document.body.classList.add('light-mode');
     }
-}
-
-function parseTargetFromText(text) {
-    const m = text.match(/(\d+)/);
-    return m ? parseInt(m[1], 10) : null;
-}
-
-async function loadGoals(uid) {
-    const goalsList = document.getElementById('goals-list');
-    goalsList.innerHTML = '';
-    try {
-        const snap = await getDocs(collection(db, 'users', uid, 'goals'));
-        snap.forEach(docSnap => {
-            const g = docSnap.data();
-            const id = docSnap.id;
-            const el = createGoalElement(id, g);
-            goalsList.appendChild(el);
-        });
-    } catch(e) { console.error(e); }
-}
-
-function createGoalElement(id, g) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'card neon-border';
-    wrapper.innerHTML = `<h4>${g.text}</h4>
-        <div class="progress-container"><div class="progress-bar"><div class="fill" style="width:${(g.current/g.target)*100}%"></div></div></div>
-        <div style="display:flex;gap:8px;align-items:center;"> <span>${g.current}/${g.target}</span> <button onclick="incrementGoal('${id}', ${g.current}, ${g.target})">+1</button></div>`;
-    return wrapper;
-}
-
-window.incrementGoal = async function(id, current, target) {
-    const user = auth.currentUser;
-    const newCurrent = Math.min(current + 1, target);
-    if(user) {
-        try { await updateDoc(doc(db, 'users', user.uid, 'goals', id), { current: newCurrent });
-            if(newCurrent >= target) dispararConfetes();
-            loadGoals(user.uid);
-        } catch(e) { console.error(e); }
-    }
-}
-
-function renderLocalGoals(list) {
-    const goalsList = document.getElementById('goals-list');
-    goalsList.innerHTML = '';
-    list.forEach((g, idx) => {
-        const el = document.createElement('div'); el.className = 'card neon-border';
-        el.innerHTML = `<h4>${g.text}</h4><p>${g.current||0}/${g.target}</p>`;
-        goalsList.appendChild(el);
-    });
-}
-
-// --- Perfil: frase e carregamento ---
-window.editPhrase = async function() {
-    const user = auth.currentUser;
-    const frase = prompt('Digite sua frase de motivação:');
-    if(!frase) return;
-    if(user) await setDoc(doc(db, 'users', user.uid), { frase }, { merge: true });
-    document.querySelector('.quote').innerText = frase;
-}
-
-async function loadProfilePhrase(uid) {
-    try {
-        const d = await getDoc(doc(db, 'users', uid));
-        if(d.exists()) {
-            const data = d.data();
-            if(data.frase) document.querySelector('.quote').innerText = data.frase;
-        }
-    } catch(e) { console.error(e); }
-}
-
-async function loadWater(uid) {
-    try {
-        const d = await getDoc(doc(db, 'users', uid));
-        if(d.exists()) {
-            const data = d.data();
-            totalAgua = data.water || 0;
-            document.getElementById('water-text').innerText = totalAgua;
-            let porcentagem = (totalAgua / metaAgua) * 100;
-            document.getElementById('water-fill').style.width = `${porcentagem}%`;
-        }
-    } catch(e) { console.error(e); }
-}
+});

@@ -9,70 +9,167 @@
 </head>
 <body>
 
-    <div id="auth-screen" class="screen active">
+    <!-- TELA DE LOGIN -->
+    <div id="login-screen" class="screen active">
         <div class="neon-box">
             <h1>Corpo Bem</h1>
-            <input type="text" placeholder="Nome de usuário (Ex: claudio)" id="username">
-            <input type="text" placeholder="Como devemos chamar vc?" id="displayname">
-            <input type="password" placeholder="Senha" id="password">
-            <button onclick="login()">Entrar / Criar Conta</button>
+            <p class="subtitle">Treino, Metas e Foco</p>
+            <input type="text" placeholder="Nome de usuário" id="login-username">
+            <input type="password" placeholder="Senha" id="login-password">
+            <button onclick="goLogin()" class="btn-primary">Entrar</button>
+            <button onclick="goForgotPassword()" class="btn-secondary">Esqueceu a Senha?</button>
+            <hr style="border-color: var(--neon-dark); margin: 15px 0;">
+            <p class="text-center" style="font-size: 12px; margin-bottom: 10px;">ou</p>
+            <button onclick="loginWithGoogle()" class="btn-google">Login com Google</button>
+            <p class="text-center" style="margin-top: 15px; font-size: 14px;">
+                Não tem conta? <a href="#" onclick="showSignup(); return false;" style="color: var(--neon-blue); text-decoration: none;">Criar conta</a>
+            </p>
         </div>
     </div>
 
+    <!-- TELA DE CRIAR CONTA -->
+    <div id="signup-screen" class="screen">
+        <div class="neon-box">
+            <h1>Criar Conta</h1>
+            <p class="subtitle">Comece sua jornada</p>
+            <input type="text" placeholder="Nome de usuário (ex: claudio)" id="signup-username">
+            <input type="text" placeholder="Como devemos chamar você? (ex: Claudinho)" id="signup-displayname">
+            <input type="password" placeholder="Senha" id="signup-password">
+            <input type="password" placeholder="Confirmar Senha" id="signup-password-confirm">
+            <button onclick="goSignup()" class="btn-primary">Criar Conta</button>
+            <button onclick="loginWithGoogleSignup()" class="btn-google">Criar com Google</button>
+            <p class="text-center" style="margin-top: 15px; font-size: 14px;">
+                Já tem conta? <a href="#" onclick="showLogin(); return false;" style="color: var(--neon-blue); text-decoration: none;">Entrar</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- TELA DE ONBOARDING -->
+    <div id="onboarding-screen" class="screen">
+        <div class="onboarding-box">
+            <h2>Vamos começar!</h2>
+            <p>Preencha seus dados iniciais</p>
+
+            <div class="onboarding-step" id="step-weight">
+                <h3>Quantos kg você pesa?</h3>
+                <input type="number" id="onboard-weight" placeholder="Ex: 80" min="30" max="300">
+                <span class="input-hint">Digite seu peso atual em kg</span>
+                <button onclick="nextOnboardingStep('weight')">Próximo</button>
+            </div>
+
+            <div class="onboarding-step" id="step-height" style="display: none;">
+                <h3>Qual é sua altura?</h3>
+                <input type="text" id="onboard-height" placeholder="Ex: 1.80" inputmode="decimal">
+                <span class="input-hint">Formato: 1.80 (altura em metros)</span>
+                <button onclick="nextOnboardingStep('height')">Próximo</button>
+            </div>
+
+            <div class="onboarding-step" id="step-goal" style="display: none;">
+                <h3>Qual é seu objetivo?</h3>
+                <div class="goal-options">
+                    <button onclick="selectObjective('perder')" class="goal-btn">Perder Peso 📉</button>
+                    <button onclick="selectObjective('ganhar')" class="goal-btn">Ganhar Peso 📈</button>
+                    <button onclick="selectObjective('manter')" class="goal-btn">Manter Peso ⚖️</button>
+                </div>
+            </div>
+
+            <div class="onboarding-step" id="step-target-weight" style="display: none;">
+                <h3>Qual é seu peso alvo?</h3>
+                <input type="number" id="onboard-target-weight" placeholder="Ex: 75" min="30" max="300">
+                <span class="input-hint">Seu objetivo de peso em kg</span>
+                <button onclick="nextOnboardingStep('target-weight')">Próximo</button>
+            </div>
+
+            <div class="onboarding-step" id="step-target-height" style="display: none;">
+                <h3>Qual é sua altura alvo?</h3>
+                <input type="text" id="onboard-target-height" placeholder="Ex: 1.80" inputmode="decimal">
+                <span class="input-hint">Formato: 1.80 (em metros)</span>
+                <button onclick="nextOnboardingStep('target-height')">Próximo</button>
+            </div>
+
+            <div class="onboarding-step" id="step-phrase" style="display: none;">
+                <h3>Sua frase de motivação</h3>
+                <input type="text" id="onboard-phrase" placeholder="Ex: A dor de hoje é a força de amanhã.">
+                <span class="input-hint">Uma frase que te inspire a continuar</span>
+                <button onclick="finishOnboarding()" class="btn-primary">Começar!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TELA PRINCIPAL DO APP -->
     <div id="main-app" class="screen">
-        
+        <!-- Toggle Dark Mode -->
+        <div class="dark-mode-toggle">
+            <button onclick="toggleDarkMode()" class="dark-toggle-btn" title="Dark/Light Mode"></button>
+        </div>
+
+        <!-- INÍCIO -->
         <section id="tab-inicio" class="tab-content active">
-            <h2 id="greeting">Bem vindo(a), ...</h2>
-            <p class="quote">"A dor de hoje é a força de amanhã."</p>
-            <p class="streak">🔥 Sequência: 5 dias</p>
-
-            <div class="card neon-border">
-                <h3>Treino de Hoje (Corpo Ilusório)</h3>
-                <p>💪 Foco: Peito e Tríceps</p>
-                <div class="progress-container">
-                    <span>Flexões (10/100)</span>
-                    <div class="progress-bar"><div class="fill" style="width: 10%;"></div></div>
-                </div>
-            </div>
-
-            <div class="card neon-border">
-                <h3>Água: <span id="water-text">0</span>ml / 2000ml</h3>
-                <div class="progress-container">
-                    <div class="progress-bar"><div id="water-fill" class="fill" style="width: 0%;"></div></div>
-                </div>
-                <button onclick="addWater(240)" class="btn-small">+ 240ml</button>
-            </div>
+            <h2 id="greeting" class="greeting-large">Bem vindo(a), ...</h2>
+            <p class="quote" style="text-align: center; font-size: 14px; margin: 10px 0; color: var(--neon-blue);">"A dor de hoje é a força de amanhã."</p>
             
-            <button onclick="concluirMetas()" style="margin-top:20px;">Bater todas as metas! (Teste Confete)</button>
-        </section>
+            <div class="streak-container">
+                <p class="streak">🔥 <span id="streak-count">0</span> dias</p>
+            </div>
 
-        <section id="tab-metas" class="tab-content">
-            <h2>Minhas Metas</h2>
-            <input id="new-goal-input" type="text" placeholder="Nova meta (Ex: Correr 10km)">
-            <button onclick="addGoal()">Adicionar Meta</button>
-        </section>
+            <div id="goals-container"></div>
 
-        <section id="tab-lojinha" class="tab-content">
-            <h2>Lojinha de Recompensas</h2>
-            <p>Seja sua própria motivação!</p>
-            <div class="card neon-border">
-                <h4>Comprar um jogo novo 🎮</h4>
-                <p>Custa: 10 dias de sequência</p>
-                <button>Resgatar</button>
+            <div style="text-align: center; color: var(--text-color); margin-top: 30px;">
+                <p>Nenhuma meta adicionada ainda.</p>
+                <p style="font-size: 12px; color: var(--neon-dark);">Vá para <strong>Metas</strong> para adicionar suas metas!</p>
             </div>
         </section>
 
+        <!-- METAS -->
+        <section id="tab-metas" class="tab-content">
+            <h2 style="text-align: center;">Minhas Metas</h2>
+            <div class="add-goal-form">
+                <input id="new-goal-input" type="text" placeholder="Ex: Beber 2L de água, 100 flexões, Correr 10km">
+                <button onclick="addGoal()" class="btn-primary">Adicionar Meta</button>
+            </div>
+            <div id="goals-list"></div>
+        </section>
+
+        <!-- LOJINHA -->
+        <section id="tab-lojinha" class="tab-content">
+            <h2 style="text-align: center;">Lojinha de Recompensas</h2>
+            <p style="text-align: center; color: var(--neon-dark);">Cumpra metas e ganhe recompensas!</p>
+            <button onclick="showAddReward()" class="btn-primary">+ Criar Recompensa</button>
+            <div id="rewards-list"></div>
+        </section>
+
+        <!-- PERFIL -->
         <section id="tab-perfil" class="tab-content">
-            <h2>Perfil</h2>
+            <h2 style="text-align: center;">Perfil</h2>
             <div class="profile-pic-container">
                 <img id="profile-img" src="https://via.placeholder.com/100" alt="Foto de Perfil">
-                <input type="file" id="upload-pic" accept="image/*" onchange="salvarFoto(event)">
+                <label for="upload-pic" class="upload-pic-label">📷</label>
+                <input type="file" id="upload-pic" accept="image/*" onchange="salvarFoto(event)" style="display: none;">
             </div>
-            <p>Peso Inicial: 80kg | Atual: 78kg</p>
-            <p>Altura: 1.75m</p>
-            <button class="btn-darkmode" onclick="toggleDarkMode()">Alternar Foco (Dark/Light)</button>
+            
+            <div class="profile-info">
+                <div class="info-row">
+                    <span class="info-label">Peso Inicial</span>
+                    <span class="info-value" id="profile-weight-initial">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Peso Atual</span>
+                    <span class="info-value" id="profile-weight-current">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Altura</span>
+                    <span class="info-value" id="profile-height">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Objetivo</span>
+                    <span class="info-value" id="profile-objetivo">--</span>
+                </div>
+            </div>
+
+            <button onclick="showEditProfile()" class="btn-primary" style="margin-top: 20px;">Editar Perfil</button>
         </section>
 
+        <!-- NAVEGAÇÃO INFERIOR -->
         <nav class="bottom-nav">
             <button onclick="switchTab('inicio')">🏠 Início</button>
             <button onclick="switchTab('metas')">🎯 Metas</button>
@@ -81,6 +178,40 @@
         </nav>
     </div>
 
-    <script type="module" src="app.js"></script>
+    <!-- MODAL: Adicionar Recompensa -->
+    <div id="modal-add-reward" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('modal-add-reward')">&times;</span>
+            <h3>Criar Recompensa</h3>
+            <input type="text" id="reward-title" placeholder="O que você vai ganhar? (Ex: Jogo novo)">
+            <input type="text" id="reward-goal" placeholder="O que você vai fazer para ganhar? (Ex: 5 dias seguidos)">
+            <button onclick="createReward()" class="btn-primary">Criar</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Editar Perfil -->
+    <div id="modal-edit-profile" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('modal-edit-profile')">&times;</span>
+            <h3>Editar Perfil</h3>
+            <label>Novo nome de usuário</label>
+            <input type="text" id="edit-username" placeholder="Novo nome de usuário">
+            <label>Frase de Motivação</label>
+            <input type="text" id="edit-phrase" placeholder="Sua frase de motivação">
+            <button onclick="saveProfileChanges()" class="btn-primary">Salvar</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Adicionar Água/Exercício -->
+    <div id="modal-add-progress" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('modal-add-progress')">&times;</span>
+            <h3 id="modal-goal-title">Adicionar Progresso</h3>
+            <input type="number" id="modal-progress-input" placeholder="Quantidade">
+            <button onclick="saveProgress()" class="btn-primary">Adicionar</button>
+        </div>
+    </div>
+
+    <script type="module" src="App.js"></script>
 </body>
 </html>
