@@ -153,6 +153,23 @@ input {
     transition: 0.3s;
 }
 
+/* Select estilizado para combinar com o tema */
+select, select option {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background: transparent;
+    color: var(--text-color);
+    border: 1px solid var(--neon-dark);
+    padding: 10px 12px;
+    border-radius: 8px;
+}
+
+select { cursor: pointer; }
+
+/* Força opções a usar fundo transparente em alguns browsers */
+select option { background: var(--card-bg); color: var(--text-color); }
+
 input:focus { 
     border-color: var(--neon-blue); 
     box-shadow: 0 0 8px var(--neon-blue);
