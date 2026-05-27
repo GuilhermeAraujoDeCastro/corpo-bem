@@ -1,6 +1,6 @@
 // Importações do Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Configuração do Firebase
@@ -101,16 +101,26 @@ window.goSignup = async function() {
     }
 }
 
-window.loginWithGoogle = function() {
-    alert('Login com Google ainda não implementado. Use username/senha por enquanto.');
+window.loginWithGoogle = async function() {
+    const provider = new GoogleAuthProvider();
+    try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        currentUser = user;
+        await setDoc(doc(db, 'users', user.uid), { username: user.email, displayname: user.displayName, createdAt: Date.now() }, { merge: true });
+        await loadUserData(user.uid);
+        showApp();
+        loadAllData();
+    } catch(e) { alert('Erro login Google: ' + e.message); }
 }
 
-window.loginWithGoogleSignup = function() {
-    alert('Login com Google ainda não implementado. Use username/senha por enquanto.');
-}
+window.loginWithGoogleSignup = window.loginWithGoogle;
 
 window.goForgotPassword = function() {
-    alert('Função "Esqueceu a Senha" ainda não implementada.');
+    const val = prompt('Digite seu username ou e-mail para recuperar a senha:');
+    if(!val) return;
+    const email = val.includes('@') ? val : `${val}@webtreino.local`;
+    sendPasswordResetEmail(auth, email).then(()=> alert('Email de recuperação enviado (simulado se @webtreino.local).')).catch(e=> alert('Erro: ' + e.message));
 }
 
 async function loadUserData(uid) {
@@ -178,6 +188,8 @@ window.finishOnboarding = async function() {
     const uid = currentUser.uid;
     try {
         await setDoc(doc(db, 'users', uid), tempOnboardingData, { merge: true });
+        // salva peso inicial como entrada no subcollection 'weights'
+        await addDoc(collection(db, 'users', uid, 'weights'), { date: new Date().toISOString().split('T')[0], weight: tempOnboardingData.kgInicial });
         userData = tempOnboardingData;
         showApp();
         loadAllData();
@@ -220,24 +232,21 @@ window.onload = function() {
 
 // ===== METAS (GOALS) =====
 window.addGoal = async function() {
-    const input = document.getElementById('new-goal-input');
-    const text = input.value.trim();
-    if(!text) return alert('Digite uma meta');
+    const text = document.getElementById('new-goal-input').value.trim();
+    const target = parseFloat(document.getElementById('new-goal-target').value);
+    const unit = document.getElementById('new-goal-unit').value;
+    if(!text || !target || isNaN(target)) return alert('Preencha a descrição e a quantidade alvo');
 
-    const goal = {
-        text,
-        createdAt: Date.now(),
-        target: parseGoalTarget(text) || 1,
-        current: 0,
-        unit: detectGoalUnit(text)
-    };
-
+    const goal = { text, createdAt: Date.now(), target: target, current: 0, unit };
     if(currentUser) {
         try {
             await addDoc(collection(db, 'users', currentUser.uid, 'goals'), goal);
-            input.value = '';
+            document.getElementById('new-goal-input').value = '';
+            document.getElementById('new-goal-target').value = '';
             loadGoals();
         } catch(e) { console.error(e); alert('Erro ao adicionar meta'); }
+    } else {
+        alert('Faça login para salvar metas');
     }
 }
 
@@ -270,10 +279,7 @@ async function loadGoals() {
         container.innerHTML = '';
         list.innerHTML = '';
         const goals = [];
-        snap.forEach(doc => {
-            goals.push({ id: doc.id, ...doc.data() });
-        });
-
+        snap.forEach(s => goals.push({ id: s.id, ...s.data() }));
         goals.forEach(g => {
             const el = createGoalCard(g);
             container.appendChild(el);
@@ -287,6 +293,9 @@ function createGoalCard(g) {
     card.className = 'card neon-border goal-card';
     const percent = (g.current / g.target) * 100;
     const unit = g.unit === 'ml' ? 'ml' : g.unit === 'reps' ? 'reps' : g.unit === 'km' ? 'km' : '';
+    let fillColor = '#00e5ff';
+    if(percent >= 100) fillColor = '#00ff66';
+    else if(percent >= 50) fillColor = '#ffd700';
 
     card.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: start;">
@@ -294,10 +303,13 @@ function createGoalCard(g) {
                 <h4>${g.text}</h4>
                 <p style="font-size: 12px; color: var(--neon-dark);">${g.current} ${unit} / ${g.target} ${unit}</p>
             </div>
-            <button onclick="deleteGoal('${g.id}')" class="btn-delete">✕</button>
+            <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+                <button onclick="editGoal('${g.id}')" class="btn-small">Editar</button>
+                <button onclick="deleteGoal('${g.id}')" class="btn-delete">✕</button>
+            </div>
         </div>
         <div class="progress-container">
-            <div class="progress-bar"><div class="fill" style="width: ${percent}%;"></div></div>
+            <div class="progress-bar"><div class="fill" style="width: ${percent}%; background: ${fillColor}; box-shadow: 0 0 10px ${fillColor};"></div></div>
         </div>
         <button onclick="openProgressModal('${g.id}', '${g.text}', ${g.target}, ${g.current}, '${g.unit}')" class="btn-small">+</button>
     `;
@@ -313,12 +325,39 @@ window.deleteGoal = async function(id) {
     } catch(e) { console.error(e); }
 }
 
+window.editGoal = async function(id) {
+    if(!currentUser) return;
+    const docRef = doc(db, 'users', currentUser.uid, 'goals', id);
+    const snap = await getDoc(docRef);
+    if(!snap.exists()) return alert('Meta não encontrada');
+    const g = snap.data();
+    const newText = prompt('Editar descrição', g.text) || g.text;
+    const newTarget = parseFloat(prompt('Editar alvo', g.target) || g.target);
+    const newUnit = prompt('Editar unidade (ml, reps, km, qty)', g.unit) || g.unit;
+    try {
+        await updateDoc(docRef, { text: newText, target: newTarget, unit: newUnit });
+        loadGoals();
+    } catch(e) { console.error(e); }
+}
+
 let currentGoalData = {};
 window.openProgressModal = function(id, text, target, current, unit) {
     currentGoalData = { id, text, target, current, unit };
     document.getElementById('modal-goal-title').innerText = `Adicionar a "${text}"`;
     document.getElementById('modal-progress-input').value = '';
     document.getElementById('modal-progress-input').placeholder = `Digite a quantidade em ${unit}`;
+    const quick = document.getElementById('modal-quick-buttons');
+    quick.innerHTML = '';
+    if(unit === 'ml') {
+        ['250','500','1000'].forEach(v=>{
+            const b=document.createElement('button'); b.className='btn-small'; b.innerText='+'+v+'ml'; b.onclick=()=>{ document.getElementById('modal-progress-input').value = parseFloat(document.getElementById('modal-progress-input').value||0)+parseFloat(v); };
+            quick.appendChild(b);
+        });
+    } else if(unit === 'reps') {
+        ['1','5','10'].forEach(v=>{ const b=document.createElement('button'); b.className='btn-small'; b.innerText='+'+v; b.onclick=()=>{ document.getElementById('modal-progress-input').value = parseFloat(document.getElementById('modal-progress-input').value||0)+parseFloat(v); }; quick.appendChild(b); });
+    } else if(unit === 'km') {
+        const b=document.createElement('button'); b.className='btn-small'; b.innerText='+1km'; b.onclick=()=>{ document.getElementById('modal-progress-input').value = parseFloat(document.getElementById('modal-progress-input').value||0)+1; }; quick.appendChild(b);
+    }
     document.getElementById('modal-add-progress').style.display = 'block';
 }
 
@@ -337,13 +376,43 @@ window.saveProgress = async function() {
             current: newCurrent
         });
 
+        // log de progresso (para resumo semanal)
+        await addDoc(collection(db, 'users', currentUser.uid, 'progressLogs'), {
+            goalId: currentGoalData.id,
+            text: currentGoalData.text,
+            amount: amount,
+            unit: currentGoalData.unit,
+            date: new Date().toISOString().split('T')[0],
+            completed: newCurrent >= currentGoalData.target
+        });
+
         if(newCurrent >= currentGoalData.target) {
             dispararConfetes();
             alert('🎉 Meta cumprida! Parabéns!');
+            // ganhar XP e apagar meta
+            await grantXPForGoal(currentUser.uid, currentGoalData);
+            // remove após breve atraso
+            setTimeout(async ()=>{ try{ await deleteDoc(doc(db, 'users', currentUser.uid, 'goals', currentGoalData.id)); loadGoals(); } catch(e){console.error(e);} }, 1200);
         }
 
         closeModal('modal-add-progress');
         loadGoals();
+    } catch(e) { console.error(e); }
+}
+
+async function grantXPForGoal(uid, goal) {
+    try {
+        // XP simples: base 10 * target
+        const xpGain = Math.max(5, Math.round(goal.target * 10));
+        const userRef = doc(db, 'users', uid);
+        const snap = await getDoc(userRef);
+        let xp = 0;
+        if(snap.exists()) xp = snap.data().xp || 0;
+        xp += xpGain;
+        const level = Math.floor(xp / 100) + 1;
+        await setDoc(userRef, { xp, level }, { merge: true });
+        userData.xp = xp; userData.level = level;
+        loadProfileData();
     } catch(e) { console.error(e); }
 }
 
@@ -466,6 +535,8 @@ function loadProfileData() {
     document.getElementById('profile-weight-current').innerText = `${wa} kg`;
     document.getElementById('profile-objetivo').innerText = obj;
     document.querySelector('.quote').innerText = userData.frase || 'A dor de hoje é a força de amanhã.';
+    document.getElementById('profile-level').innerText = userData.level || 1;
+    document.getElementById('profile-xp').innerText = (userData.xp || 0) + ' XP';
 }
 
 // ===== SEQUÊNCIA E DADOS =====
@@ -507,6 +578,60 @@ async function loadAllData() {
     loadGoals();
     loadRewards();
     loadProfileData();
+    loadWeightHistory();
+}
+
+// ===== HISTÓRICO DE PESO e GRÁFICO =====
+window.addWeightEntry = async function() {
+    if(!currentUser) return alert('Faça login');
+    const v = parseFloat(document.getElementById('profile-new-weight').value);
+    if(isNaN(v) || v <= 0) return alert('Digite um peso válido');
+    try {
+        const uid = currentUser.uid;
+        const date = new Date().toISOString().split('T')[0];
+        await addDoc(collection(db, 'users', uid, 'weights'), { date, weight: v });
+        // atualizar peso atual no documento do usuário
+        await setDoc(doc(db, 'users', uid), { kgAtual: v }, { merge: true });
+        userData.kgAtual = v;
+        document.getElementById('profile-weight-current').innerText = `${v} kg`;
+        document.getElementById('profile-new-weight').value = '';
+        loadWeightHistory();
+    } catch(e) { console.error(e); }
+}
+
+async function loadWeightHistory() {
+    if(!currentUser) return;
+    try {
+        const snap = await getDocs(collection(db, 'users', currentUser.uid, 'weights'));
+        const arr = [];
+        snap.forEach(s => arr.push(s.data()));
+        // ordenar por date asc
+        arr.sort((a,b)=> new Date(a.date) - new Date(b.date));
+        const labels = arr.map(x=>x.date);
+        const data = arr.map(x=>parseFloat(x.weight));
+        renderWeightChart(labels, data);
+    } catch(e) { console.error(e); }
+}
+
+function renderWeightChart(labels, data) {
+    const ctx = document.getElementById('weight-chart');
+    if(!ctx) return;
+    // remove existing chart instance
+    if(window._weightChart) { window._weightChart.destroy(); }
+    window._weightChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Peso (kg)', data, borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.08)', tension: 0.3 }] },
+        options: { responsive: true, scales: { y: { beginAtZero: false } } }
+    });
+}
+
+// ===== Sair =====
+window.signOutAccount = async function() {
+    try {
+        await signOut(auth);
+        currentUser = null; userData = {};
+        showLogin();
+    } catch(e) { console.error(e); }
 }
 
 // ===== INTERFACE =====

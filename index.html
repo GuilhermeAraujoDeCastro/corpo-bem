@@ -6,6 +6,7 @@
     <title>Corpo Bem</title>
     <link rel="stylesheet" href="Style.css">
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -124,7 +125,17 @@
         <section id="tab-metas" class="tab-content">
             <h2 style="text-align: center;">Minhas Metas</h2>
             <div class="add-goal-form">
-                <input id="new-goal-input" type="text" placeholder="Ex: Beber 2L de água, 100 flexões, Correr 10km">
+                <input id="new-goal-input" type="text" placeholder="Ex: Beber água, 100 flexões, Correr">
+                <div style="display:flex;gap:8px;">
+                    <input id="new-goal-target" type="number" min="1" placeholder="Quantidade (ex: 2000, 100, 5)">
+                    <select id="new-goal-unit">
+                        <option value="ml">ml (água)</option>
+                        <option value="reps">reps (flexões)</option>
+                        <option value="km">km (corrida)</option>
+                        <option value="qty">unidade</option>
+                        <option value="sono">unidade</option>
+                    </select>
+                </div>
                 <button onclick="addGoal()" class="btn-primary">Adicionar Meta</button>
             </div>
             <div id="goals-list"></div>
@@ -157,6 +168,14 @@
                     <span class="info-value" id="profile-weight-current">--</span>
                 </div>
                 <div class="info-row">
+                    <span class="info-label">Nível</span>
+                    <span class="info-value" id="profile-level">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">XP</span>
+                    <span class="info-value" id="profile-xp">--</span>
+                </div>
+                <div class="info-row">
                     <span class="info-label">Altura</span>
                     <span class="info-value" id="profile-height">--</span>
                 </div>
@@ -166,7 +185,19 @@
                 </div>
             </div>
 
-            <button onclick="showEditProfile()" class="btn-primary" style="margin-top: 20px;">Editar Perfil</button>
+            <div style="margin-top:12px; text-align:center;">
+                <input id="profile-new-weight" type="number" step="0.1" placeholder="Adicionar peso (kg)" style="width:60%; display:inline-block;">
+                <button class="btn-small" onclick="addWeightEntry()">Salvar peso</button>
+            </div>
+
+            <div style="margin-top:20px;">
+                <canvas id="weight-chart" height="140"></canvas>
+            </div>
+
+            <div style="margin-top:12px; display:flex; gap:8px; justify-content:center;">
+                <button onclick="showEditProfile()" class="btn-primary">Editar Perfil</button>
+                <button onclick="signOutAccount()" class="btn-secondary">Sair da Conta</button>
+            </div>
         </section>
 
         <!-- NAVEGAÇÃO INFERIOR -->
@@ -207,8 +238,19 @@
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('modal-add-progress')">&times;</span>
             <h3 id="modal-goal-title">Adicionar Progresso</h3>
-            <input type="number" id="modal-progress-input" placeholder="Quantidade">
+            <div id="modal-quick-buttons" style="display:flex;gap:8px;margin-bottom:10px;"></div>
+            <input type="number" step="any" id="modal-progress-input" placeholder="Quantidade">
             <button onclick="saveProgress()" class="btn-primary">Adicionar</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Resumo Semanal -->
+    <div id="modal-weekly-recap" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('modal-weekly-recap')">&times;</span>
+            <h3>Resumo da Semana</h3>
+            <div id="weekly-summary-content" style="color:var(--text-color);"></div>
+            <button onclick="closeModal('modal-weekly-recap')" class="btn-primary" style="margin-top:12px;">Fechar</button>
         </div>
     </div>
 
