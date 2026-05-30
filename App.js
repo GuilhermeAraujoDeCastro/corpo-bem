@@ -613,6 +613,56 @@ async function loadWeightHistory() {
     } catch(e) { console.error(e); }
 }
 
+// ===== RESUMO SEMANAL =====
+async function generateWeeklyRecap() {
+    if(!currentUser) return;
+    try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const since = sevenDaysAgo.toISOString().split('T')[0];
+
+        const snap = await getDocs(collection(db, 'users', currentUser.uid, 'progressLogs'));
+        const logs = [];
+        snap.forEach(s => logs.push(s.data()));
+
+        const recent = logs.filter(l => l.date >= since);
+        let waterTotal = 0; let kmTotal = 0; let repsTotal = 0; let completedCount = 0;
+        recent.forEach(r=>{
+            if(r.unit === 'ml') waterTotal += (r.amount || 0);
+            else if(r.unit === 'km') kmTotal += (r.amount || 0);
+            else if(r.unit === 'reps') repsTotal += (r.amount || 0);
+            if(r.completed) completedCount += 1;
+        });
+
+        const totalLogs = recent.length || 1;
+        const percentCompleted = Math.round((completedCount / totalLogs) * 100);
+
+        const content = document.getElementById('weekly-summary-content');
+        content.innerHTML = `
+            <p style="font-size:16px;">Esta semana:</p>
+            <ul style="list-style:none; padding-left:0;">
+                <li>• Bebeste <strong>${(waterTotal/1000).toFixed(2)} L</strong> de água</li>
+                <li>• Correste <strong>${kmTotal.toFixed(2)} km</strong></li>
+                <li>• Fizeste <strong>${repsTotal}</strong> repetições</li>
+                <li>• Completaste <strong>${percentCompleted}%</strong> das metas registradas</li>
+            </ul>
+        `;
+        document.getElementById('modal-weekly-recap').style.display = 'block';
+    } catch(e) { console.error(e); }
+}
+
+// Mostrar recap automaticamente aos domingos
+function tryShowWeeklyRecapAuto() {
+    const today = new Date();
+    // 0 = domingo em JS
+    if(today.getDay() === 0) {
+        generateWeeklyRecap();
+    }
+}
+
+// chamar após carregar dados
+setTimeout(()=>{ tryShowWeeklyRecapAuto(); }, 1200);
+
 function renderWeightChart(labels, data) {
     const ctx = document.getElementById('weight-chart');
     if(!ctx) return;
