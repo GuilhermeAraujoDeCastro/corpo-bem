@@ -587,23 +587,50 @@ async function loadAllData() {
 }
 
 // ===== HISTÓRICO DE PESO e GRÁFICO =====
-window.addWeightEntry = async function() {
+window.addMeasurements = async function() {
     if(!currentUser) return alert('Faça login');
-    const v = parseFloat(document.getElementById('profile-new-weight').value);
-    if(isNaN(v) || v <= 0) return alert('Digite um peso válido');
+    const pesoVal = document.getElementById('profile-new-weight').value;
+    const alturaVal = document.getElementById('profile-new-height').value.trim();
+
+    const peso = pesoVal ? parseFloat(pesoVal) : null;
+    const altura = alturaVal ? parseFloat(alturaVal) : null;
+
+    if(peso === null && altura === null) return alert('Preencha pelo menos o peso ou a altura.');
+    if(peso !== null && (isNaN(peso) || peso <= 0)) return alert('Peso inválido.');
+    if(altura !== null && !isValidHeight(String(altura))) return alert('Altura inválida. Use o formato 1.80');
+
     try {
         const uid = currentUser.uid;
         const date = new Date().toISOString().split('T')[0];
-        await addDoc(collection(db, 'users', uid, 'weights'), { date, weight: v });
-        // atualizar peso atual no documento do usuário
-        await setDoc(doc(db, 'users', uid), { kgAtual: v }, { merge: true });
-        userData.kgAtual = v;
-        document.getElementById('profile-weight-current').innerText = `${v} kg`;
+        const updates = {};
+
+        if(peso !== null) {
+            await addDoc(collection(db, 'users', uid, 'weights'), { date, weight: peso });
+            updates.kgAtual = peso;
+            userData.kgAtual = peso;
+            document.getElementById('profile-weight-current').innerText = `${peso} kg`;
+        }
+
+        if(altura !== null) {
+            const alturaFmt = parseFloat(altura).toFixed(2);
+            updates.alturaAtual = alturaFmt;
+            userData.alturaAtual = alturaFmt;
+            document.getElementById('profile-height').innerText = `${alturaFmt} m`;
+        }
+
+        if(Object.keys(updates).length > 0) {
+            await setDoc(doc(db, 'users', uid), updates, { merge: true });
+        }
+
         document.getElementById('profile-new-weight').value = '';
+        document.getElementById('profile-new-height').value = '';
         calcularIMC();
         loadWeightHistory();
-    } catch(e) { console.error(e); }
+    } catch(e) { console.error(e); alert('Erro ao salvar: ' + e.message); }
 }
+
+// Mantido por compatibilidade interna
+window.addWeightEntry = window.addMeasurements;
 
 async function loadWeightHistory() {
     if(!currentUser) return;
