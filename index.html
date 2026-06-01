@@ -103,9 +103,7 @@
         <div class="dark-mode-toggle">
             <button onclick="toggleDarkMode()" class="dark-toggle-btn" title="Dark/Light Mode"></button>
         </div>
-        <div style="position: absolute; top: 90px; right: 20px; z-index: 210;">
-            <button id="weekly-recap-btn" class="btn-secondary" onclick="generateWeeklyRecap()">Resumo da Semana</button>
-        </div>
+
 
         <!-- INÍCIO -->
         <section id="tab-inicio" class="tab-content active">
@@ -138,6 +136,13 @@
                         <option value="qty">unidade</option>
                         <option value="sono">horas (sono)</option>
                     </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="new-goal-daily">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span style="font-size:13px; color:var(--neon-dark);">Meta diária (reseta todo dia)</span>
                 </div>
                 <button onclick="addGoal()" class="btn-primary">Adicionar Meta</button>
             </div>
@@ -197,9 +202,44 @@
                 <canvas id="weight-chart" height="140"></canvas>
             </div>
 
-            <div style="margin-top:12px; display:flex; gap:8px; justify-content:center;">
-                <button onclick="showEditProfile()" class="btn-primary">Editar Perfil</button>
-                <button onclick="signOutAccount()" class="btn-secondary">Sair da Conta</button>
+            <!-- IMC -->
+            <div id="imc-container" style="margin-top:20px; background:var(--card-bg); border:1px solid var(--neon-dark); border-radius:12px; padding:15px;">
+                <h4 style="color:var(--neon-blue); margin-bottom:10px; text-align:center;">📊 IMC</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:28px; font-weight:bold; color:var(--neon-blue);" id="imc-value">--</span>
+                    <span id="imc-label" style="font-size:13px; padding:5px 12px; border-radius:20px; border:1px solid var(--neon-dark); color:var(--neon-blue);">--</span>
+                </div>
+                <div id="imc-bar-container" style="margin-top:10px; height:10px; border-radius:5px; background:linear-gradient(to right,#4fc3f7,#66bb6a,#ffa726,#ef5350); position:relative; overflow:visible;">
+                    <div id="imc-marker" style="position:absolute; top:-4px; width:18px; height:18px; background:white; border-radius:50%; border:2px solid #000; transform:translateX(-50%); left:0%; transition:left 0.5s;"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--neon-dark); margin-top:4px;">
+                    <span>Abaixo</span><span>Normal</span><span>Sobrepeso</span><span>Obeso</span>
+                </div>
+            </div>
+
+            <!-- Notificações -->
+            <div style="margin-top:16px; background:var(--card-bg); border:1px solid var(--neon-dark); border-radius:12px; padding:15px;">
+                <h4 style="color:var(--neon-blue); margin-bottom:12px; text-align:center;">🔔 Lembretes</h4>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="font-size:13px;">Lembrete de água (a cada 2h)</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-water-reminder" onchange="toggleReminder('water', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:13px;">Lembrete de meta diária (20h)</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-goal-reminder" onchange="toggleReminder('goal', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div style="margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;">
+                <button onclick="generateWeeklyRecap()" class="btn-secondary" style="flex:1;">📅 Resumo da Semana</button>
+                <button onclick="showEditProfile()" class="btn-primary" style="flex:1;">Editar Perfil</button>
+                <button onclick="signOutAccount()" class="btn-secondary" style="width:100%;">Sair da Conta</button>
             </div>
         </section>
 

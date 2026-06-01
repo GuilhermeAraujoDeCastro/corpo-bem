@@ -237,12 +237,14 @@ window.addGoal = async function() {
     const unit = document.getElementById('new-goal-unit').value;
     if(!text || !target || isNaN(target)) return alert('Preencha a descrição e a quantidade alvo');
 
-    const goal = { text, createdAt: Date.now(), target: target, current: 0, unit };
+    const isDaily = document.getElementById('new-goal-daily').checked;
+    const goal = { text, createdAt: Date.now(), target: target, current: 0, unit, isDaily };
     if(currentUser) {
         try {
             await addDoc(collection(db, 'users', currentUser.uid, 'goals'), goal);
             document.getElementById('new-goal-input').value = '';
             document.getElementById('new-goal-target').value = '';
+            document.getElementById('new-goal-daily').checked = false;
             loadGoals();
         } catch(e) { console.error(e); alert('Erro ao adicionar meta'); }
     } else {
@@ -300,7 +302,7 @@ function createGoalCard(g) {
     card.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: start;">
             <div>
-                <h4>${g.text}</h4>
+                <h4>${g.text} ${g.isDaily ? '<span style="font-size:10px;background:rgba(0,229,255,0.15);border:1px solid var(--neon-blue);color:var(--neon-blue);padding:2px 7px;border-radius:10px;">Diária</span>' : ''}</h4>
                 <p style="font-size: 12px; color: var(--neon-dark);">${g.current} ${unit} / ${g.target} ${unit}</p>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
@@ -537,6 +539,7 @@ function loadProfileData() {
     document.querySelector('.quote').innerText = userData.frase || 'A dor de hoje é a força de amanhã.';
     document.getElementById('profile-level').innerText = userData.level || 1;
     document.getElementById('profile-xp').innerText = (userData.xp || 0) + ' XP';
+    calcularIMC();
 }
 
 // ===== SEQUÊNCIA E DADOS =====
@@ -575,10 +578,12 @@ async function loadAllData() {
     
     await loadUserData(uid);
     await updateStreak();
+    await resetDailyGoals();
     loadGoals();
     loadRewards();
     loadProfileData();
     loadWeightHistory();
+    restoreReminders();
 }
 
 // ===== HISTÓRICO DE PESO e GRÁFICO =====
@@ -595,6 +600,7 @@ window.addWeightEntry = async function() {
         userData.kgAtual = v;
         document.getElementById('profile-weight-current').innerText = `${v} kg`;
         document.getElementById('profile-new-weight').value = '';
+        calcularIMC();
         loadWeightHistory();
     } catch(e) { console.error(e); }
 }
@@ -725,3 +731,112 @@ window.addEventListener('load', function() {
         document.body.classList.add('light-mode');
     }
 });
+
+// ===== IMC =====
+function calcularIMC() {
+    const peso = parseFloat(userData.kgAtual || userData.kgInicial);
+    const altura = parseFloat(userData.alturaAtual || userData.alturaInicial);
+    if(!peso || !altura || altura === 0) return;
+
+    const imc = peso / (altura * altura);
+    document.getElementById('imc-value').innerText = imc.toFixed(1);
+
+    let label = '', color = '', pct = 0;
+    if(imc < 18.5)      { label = '⚠️ Abaixo do peso'; color = '#4fc3f7'; pct = Math.max(2, ((imc - 10) / 8.5) * 25); }
+    else if(imc < 25)   { label = '✅ Peso normal';     color = '#66bb6a'; pct = 25 + ((imc - 18.5) / 6.5) * 25; }
+    else if(imc < 30)   { label = '⚠️ Sobrepeso';       color = '#ffa726'; pct = 50 + ((imc - 25) / 5) * 25; }
+    else                { label = '🔴 Obesidade';        color = '#ef5350'; pct = Math.min(98, 75 + ((imc - 30) / 10) * 25); }
+
+    const labelEl = document.getElementById('imc-label');
+    labelEl.innerText = label;
+    labelEl.style.borderColor = color;
+    labelEl.style.color = color;
+    document.getElementById('imc-marker').style.left = pct.toFixed(1) + '%';
+}
+
+// ===== RESET METAS DIÁRIAS =====
+async function resetDailyGoals() {
+    if(!currentUser) return;
+    const today = new Date().toISOString().split('T')[0];
+    const lastReset = localStorage.getItem('lastDailyReset_' + currentUser.uid);
+    if(lastReset === today) return; // já resetou hoje
+
+    try {
+        const snap = await getDocs(collection(db, 'users', currentUser.uid, 'goals'));
+        const batch = [];
+        snap.forEach(s => {
+            const g = s.data();
+            if(g.isDaily && g.current > 0) {
+                batch.push(updateDoc(doc(db, 'users', currentUser.uid, 'goals', s.id), { current: 0 }));
+            }
+        });
+        await Promise.all(batch);
+        localStorage.setItem('lastDailyReset_' + currentUser.uid, today);
+        if(batch.length > 0) loadGoals();
+    } catch(e) { console.error('Erro no reset diário:', e); }
+}
+
+// ===== NOTIFICAÇÕES / LEMBRETES =====
+let waterReminderInterval = null;
+let goalReminderTimeout = null;
+
+window.toggleReminder = async function(type, enabled) {
+    if(enabled) {
+        const perm = await Notification.requestPermission();
+        if(perm !== 'granted') {
+            alert('Permissão de notificações negada. Ative nas configurações do navegador.');
+            document.getElementById(`toggle-${type}-reminder`).checked = false;
+            return;
+        }
+    }
+    localStorage.setItem(`reminder_${type}`, enabled ? '1' : '0');
+
+    if(type === 'water') {
+        clearInterval(waterReminderInterval);
+        waterReminderInterval = null;
+        if(enabled) {
+            // Envia agora e depois a cada 2 horas
+            sendNotification('💧 Hora de beber água!', 'Não esqueça de se manter hidratado(a).');
+            waterReminderInterval = setInterval(() => {
+                sendNotification('💧 Hora de beber água!', 'Você já bebeu água hoje? Mantenha a hidratação!');
+            }, 2 * 60 * 60 * 1000);
+        }
+    } else if(type === 'goal') {
+        clearTimeout(goalReminderTimeout);
+        goalReminderTimeout = null;
+        if(enabled) scheduleGoalReminder();
+    }
+}
+
+function sendNotification(title, body) {
+    if(Notification.permission === 'granted') {
+        new Notification(title, { body, icon: '/favicon.ico' });
+    }
+}
+
+function scheduleGoalReminder() {
+    const now = new Date();
+    const target = new Date();
+    target.setHours(20, 0, 0, 0);
+    if(now >= target) target.setDate(target.getDate() + 1);
+    const ms = target - now;
+    goalReminderTimeout = setTimeout(() => {
+        sendNotification('🎯 Suas metas te esperam!', 'Ainda dá tempo de cumprir suas metas de hoje!');
+        scheduleGoalReminder(); // agenda pro dia seguinte
+    }, ms);
+}
+
+function restoreReminders() {
+    const water = localStorage.getItem('reminder_water') === '1';
+    const goal = localStorage.getItem('reminder_goal') === '1';
+    const waterEl = document.getElementById('toggle-water-reminder');
+    const goalEl = document.getElementById('toggle-goal-reminder');
+    if(waterEl) waterEl.checked = water;
+    if(goalEl) goalEl.checked = goal;
+    if(water && Notification.permission === 'granted') {
+        waterReminderInterval = setInterval(() => {
+            sendNotification('💧 Hora de beber água!', 'Você já bebeu água hoje? Mantenha a hidratação!');
+        }, 2 * 60 * 60 * 1000);
+    }
+    if(goal && Notification.permission === 'granted') scheduleGoalReminder();
+}
