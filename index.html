@@ -5,13 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Corpo Bem</title>
     <link rel="stylesheet" href="Style.css">
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+        // Aplica tema salvo imediatamente (evita flash)
+        (function() {
+            if(localStorage.getItem('darkMode') !== 'false') {
+                document.documentElement.classList.add('light-mode-pending');
+            }
+        })();
+        function toggleDarkMode() {
+            document.body.classList.toggle('light-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('light-mode') ? 'true' : 'false');
+        }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
     <!-- TELA DE LOGIN -->
     <div id="login-screen" class="screen active">
+        <div class="dark-mode-toggle">
+            <button onclick="toggleDarkMode()" class="dark-toggle-btn" title="Dark/Light Mode"></button>
+        </div>
         <div class="neon-box">
             <h1>Corpo Bem</h1>
             <p class="subtitle">Treino, Metas e Foco</p>
@@ -30,6 +44,9 @@
 
     <!-- TELA DE CRIAR CONTA -->
     <div id="signup-screen" class="screen">
+        <div class="dark-mode-toggle">
+            <button onclick="toggleDarkMode()" class="dark-toggle-btn" title="Dark/Light Mode"></button>
+        </div>
         <div class="neon-box">
             <h1>Criar Conta</h1>
             <p class="subtitle">Comece sua jornada</p>
@@ -47,6 +64,9 @@
 
     <!-- TELA DE ONBOARDING -->
     <div id="onboarding-screen" class="screen">
+        <div class="dark-mode-toggle">
+            <button onclick="toggleDarkMode()" class="dark-toggle-btn" title="Dark/Light Mode"></button>
+        </div>
         <div class="onboarding-box">
             <h2>Vamos começar!</h2>
             <p>Preencha seus dados iniciais</p>

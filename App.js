@@ -725,11 +725,6 @@ window.switchTab = function(tabId) {
     document.getElementById(`tab-${tabId}`).classList.add('active');
 }
 
-window.toggleDarkMode = function() {
-    document.body.classList.toggle('light-mode');
-    localStorage.setItem('darkMode', document.body.classList.contains('light-mode') ? 'true' : 'false');
-}
-
 window.closeModal = function(modalId) {
     document.getElementById(modalId).style.display = 'none';
 }
@@ -753,9 +748,12 @@ function dispararConfetes() {
 
 // Recuperar dark mode
 window.addEventListener('load', function() {
-    const isDarkMode = localStorage.getItem('darkMode') === 'false';
-    if(!isDarkMode) {
+    const saved = localStorage.getItem('darkMode');
+    // 'true' = light mode ativo, null/ausente = dark (padrão)
+    if(saved === 'true') {
         document.body.classList.add('light-mode');
+    } else {
+        document.body.classList.remove('light-mode');
     }
 });
 
