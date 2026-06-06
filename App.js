@@ -313,7 +313,7 @@ function createGoalCard(g) {
         <div class="progress-container">
             <div class="progress-bar"><div class="fill" style="width: ${percent}%; background: ${fillColor}; box-shadow: 0 0 10px ${fillColor};"></div></div>
         </div>
-        <button onclick="openProgressModal('${g.id}', '${g.text}', ${g.target}, ${g.current}, '${g.unit}')" class="btn-small">+</button>
+        <button onclick="openProgressModal('${g.id}', '${g.text.replace(/'/g,"\\'")}', ${g.target}, ${g.current}, '${g.unit}', ${!!g.isDaily})" class="btn-small">+</button>
     `;
     return card;
 }
@@ -343,8 +343,8 @@ window.editGoal = async function(id) {
 }
 
 let currentGoalData = {};
-window.openProgressModal = function(id, text, target, current, unit) {
-    currentGoalData = { id, text, target, current, unit };
+window.openProgressModal = function(id, text, target, current, unit, isDaily) {
+    currentGoalData = { id, text, target, current, unit, isDaily: isDaily === 'true' || isDaily === true };
     document.getElementById('modal-goal-title').innerText = `Adicionar a "${text}"`;
     document.getElementById('modal-progress-input').value = '';
     document.getElementById('modal-progress-input').placeholder = `Digite a quantidade em ${unit}`;
@@ -390,11 +390,25 @@ window.saveProgress = async function() {
 
         if(newCurrent >= currentGoalData.target) {
             dispararConfetes();
-            alert('🎉 Meta cumprida! Parabéns!');
-            // ganhar XP e apagar meta
+            // Ganhar XP antes de fechar
             await grantXPForGoal(currentUser.uid, currentGoalData);
-            // remove após breve atraso
-            setTimeout(async ()=>{ try{ await deleteDoc(doc(db, 'users', currentUser.uid, 'goals', currentGoalData.id)); loadGoals(); } catch(e){console.error(e);} }, 1200);
+
+            closeModal('modal-add-progress');
+
+            if(currentGoalData.isDaily) {
+                // Meta diária: apenas marca como completa (será resetada no próximo dia)
+                await updateDoc(doc(db, 'users', currentUser.uid, 'goals', currentGoalData.id), { current: currentGoalData.target });
+                loadGoals();
+                showCelebrationBanner('🎉 Meta diária cumprida! Parabéns!');
+            } else {
+                // Meta normal: remove após celebração
+                showCelebrationBanner('🏆 Meta concluída! Incrível!');
+                try {
+                    await deleteDoc(doc(db, 'users', currentUser.uid, 'goals', currentGoalData.id));
+                } catch(e) { console.error(e); }
+                loadGoals();
+            }
+            return;
         }
 
         closeModal('modal-add-progress');
@@ -450,17 +464,21 @@ async function loadRewards() {
             return;
         }
 
-        snap.forEach(doc => {
-            const r = doc.data();
+        snap.forEach(rewardDoc => {
+            const r = rewardDoc.data();
             const card = document.createElement('div');
             card.className = 'card neon-border';
+            const rewardId = rewardDoc.id;
             card.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: start;">
                     <div>
-                        <h4>${r.title}</h4>
+                        <h4 style="${r.completed ? 'text-decoration:line-through;opacity:0.6;' : ''}">${r.title} ${r.completed ? '✅' : ''}</h4>
                         <p style="font-size: 12px; color: var(--neon-dark);">Se você: ${r.goal}</p>
                     </div>
-                    <button onclick="markRewardCompleted('${doc.id}')" class="btn-small">${r.completed ? '✓' : 'Marcar'}</button>
+                    ${!r.completed
+                        ? `<button onclick="markRewardCompleted('${rewardId}')" class="btn-small" style="white-space:nowrap;">🎁 Recolher</button>`
+                        : `<button onclick="deleteReward('${rewardId}')" class="btn-delete" style="white-space:nowrap;">✕</button>`
+                    }
                 </div>
             `;
             list.appendChild(card);
@@ -475,8 +493,36 @@ window.markRewardCompleted = async function(id) {
             completed: true
         });
         dispararConfetes();
+        showCelebrationBanner('🎁 Recompensa recolhida! Você merece!');
         loadRewards();
     } catch(e) { console.error(e); }
+}
+
+window.deleteReward = async function(id) {
+    if(!currentUser) return;
+    if(!confirm('Remover esta recompensa?')) return;
+    try {
+        await deleteDoc(doc(db, 'users', currentUser.uid, 'rewards', id));
+        loadRewards();
+    } catch(e) { console.error(e); }
+}
+
+function showCelebrationBanner(msg) {
+    let banner = document.getElementById('celebration-banner');
+    if(!banner) {
+        banner = document.createElement('div');
+        banner.id = 'celebration-banner';
+        banner.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;background:var(--card-bg);border:2px solid var(--neon-blue);border-radius:12px;padding:16px 28px;color:var(--neon-blue);font-size:18px;font-weight:bold;box-shadow:0 0 30px var(--neon-blue);text-align:center;transition:opacity 0.5s;max-width:90vw;';
+        document.body.appendChild(banner);
+    }
+    banner.innerText = msg;
+    banner.style.opacity = '1';
+    banner.style.display = 'block';
+    clearTimeout(banner._timeout);
+    banner._timeout = setTimeout(() => {
+        banner.style.opacity = '0';
+        setTimeout(() => { banner.style.display = 'none'; }, 500);
+    }, 3000);
 }
 
 // ===== PERFIL =====
