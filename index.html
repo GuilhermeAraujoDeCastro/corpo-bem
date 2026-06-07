@@ -22,8 +22,15 @@
             document.body.classList.toggle('light-mode');
             localStorage.setItem('darkMode', document.body.classList.contains('light-mode') ? 'true' : 'false');
         }
+        function switchMetasSubtab(tab) {
+            document.getElementById('subtab-ativas').style.display = tab === 'ativas' ? 'block' : 'none';
+            document.getElementById('subtab-concluidas').style.display = tab === 'concluidas' ? 'block' : 'none';
+            document.getElementById('subtab-ativas-btn').className = tab === 'ativas' ? 'btn-small btn-primary' : 'btn-small btn-secondary';
+            document.getElementById('subtab-concluidas-btn').className = tab === 'concluidas' ? 'btn-small btn-primary' : 'btn-small btn-secondary';
+        }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
@@ -140,6 +147,17 @@
                 <p class="streak">🔥 <span id="streak-count">0</span> dias</p>
             </div>
 
+            <!-- Barra de XP -->
+            <div style="margin: 0 0 18px 0; background:var(--card-bg); border:1px solid var(--neon-dark); border-radius:10px; padding:10px 14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="font-size:12px; color:var(--neon-dark);">⚡ XP</span>
+                    <span id="home-xp-label" style="font-size:11px; color:var(--neon-blue);">Nível 1 · 0/100 XP</span>
+                </div>
+                <div class="progress-container" style="margin:0; height:10px;">
+                    <div class="progress-bar"><div class="fill" id="home-xp-bar" style="width:0%; background:var(--neon-blue);"></div></div>
+                </div>
+            </div>
+
             <div id="goals-container"></div>
 
             <div style="text-align: center; color: var(--text-color); margin-top: 30px;">
@@ -151,28 +169,44 @@
         <!-- METAS -->
         <section id="tab-metas" class="tab-content">
             <h2 style="text-align: center;">Minhas Metas</h2>
-            <div class="add-goal-form">
-                <input id="new-goal-input" type="text" placeholder="Ex: Beber água, 100 flexões, Correr">
-                <div style="display:flex;gap:8px;">
-                    <input id="new-goal-target" type="number" min="1" placeholder="Quantidade (ex: 2000, 100, 5)">
-                    <select id="new-goal-unit">
-                        <option value="ml">ml (água)</option>
-                        <option value="reps">reps (flexões)</option>
-                        <option value="km">km (corrida)</option>
-                        <option value="qty">unidade</option>
-                        <option value="sono">horas (sono)</option>
-                    </select>
-                </div>
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="new-goal-daily">
-                        <span class="toggle-slider"></span>
-                    </label>
-                    <span style="font-size:13px; color:var(--neon-dark);">Meta diária (reseta todo dia)</span>
-                </div>
-                <button onclick="addGoal()" class="btn-primary">Adicionar Meta</button>
+
+            <!-- Sub-tabs: Ativas / Concluídas -->
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <button id="subtab-ativas-btn" onclick="switchMetasSubtab('ativas')" class="btn-small btn-primary" style="flex:1;">🎯 Ativas</button>
+                <button id="subtab-concluidas-btn" onclick="switchMetasSubtab('concluidas')" class="btn-small btn-secondary" style="flex:1;">✅ Concluídas</button>
             </div>
-            <div id="goals-list"></div>
+
+            <!-- Sub-tab: Ativas -->
+            <div id="subtab-ativas">
+                <div class="add-goal-form">
+                    <input id="new-goal-input" type="text" placeholder="Ex: Beber água, 100 flexões, Correr">
+                    <div style="display:flex;gap:8px;">
+                        <input id="new-goal-target" type="number" min="1" placeholder="Quantidade (ex: 2000, 100, 5)">
+                        <select id="new-goal-unit">
+                            <option value="ml">ml (água)</option>
+                            <option value="reps">reps (flexões)</option>
+                            <option value="km">km (corrida)</option>
+                            <option value="qty">unidade</option>
+                            <option value="sono">horas (sono)</option>
+                        </select>
+                    </div>
+                    <input id="new-goal-deadline" type="date" placeholder="Prazo (opcional)" style="color:var(--neon-dark);">
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="new-goal-daily">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span style="font-size:13px; color:var(--neon-dark);">Meta diária (reseta todo dia)</span>
+                    </div>
+                    <button onclick="addGoal()" class="btn-primary">Adicionar Meta</button>
+                </div>
+                <div id="goals-list"></div>
+            </div>
+
+            <!-- Sub-tab: Concluídas -->
+            <div id="subtab-concluidas" style="display:none;">
+                <div id="completed-goals-list"></div>
+            </div>
         </section>
 
         <!-- LOJINHA -->
@@ -187,7 +221,7 @@
         <section id="tab-perfil" class="tab-content">
             <h2 style="text-align: center;">Perfil</h2>
             <div class="profile-pic-container">
-                <img id="profile-img" src="https://via.placeholder.com/100" alt="Foto de Perfil">
+                <img id="profile-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%230d111a'/%3E%3Ccircle cx='50' cy='38' r='18' fill='%23005bb5'/%3E%3Cellipse cx='50' cy='80' rx='28' ry='20' fill='%23005bb5'/%3E%3C/svg%3E" alt="Foto de Perfil">
                 <label for="upload-pic" class="upload-pic-label">📷</label>
                 <input type="file" id="upload-pic" accept="image/*" onchange="salvarFoto(event)" style="display: none;">
             </div>

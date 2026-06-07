@@ -107,10 +107,19 @@ window.loginWithGoogle = async function() {
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
         currentUser = user;
-        await setDoc(doc(db, 'users', user.uid), { username: user.email, displayname: user.displayName, createdAt: Date.now() }, { merge: true });
+        // Só faz merge se for novo (não sobrescreve onboarding existente)
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if(!snap.exists()) {
+            await setDoc(doc(db, 'users', user.uid), { username: user.email, displayname: user.displayName, createdAt: Date.now() }, { merge: true });
+        }
         await loadUserData(user.uid);
-        showApp();
-        loadAllData();
+        // Se não fez onboarding ainda, redireciona
+        if(!userData.kgInicial) {
+            showOnboarding();
+        } else {
+            showApp();
+            loadAllData();
+        }
     } catch(e) { alert('Erro login Google: ' + e.message); }
 }
 
@@ -183,13 +192,13 @@ window.finishOnboarding = async function() {
     tempOnboardingData.kgAtual = tempOnboardingData.kgInicial;
     tempOnboardingData.alturaAtual = tempOnboardingData.alturaInicial;
     tempOnboardingData.sequencia = 0;
-    tempOnboardingData.ultimoAcesso = new Date().toISOString().split('T')[0];
+    tempOnboardingData.ultimoAcesso = getLocalDateStr();
 
     const uid = currentUser.uid;
     try {
         await setDoc(doc(db, 'users', uid), tempOnboardingData, { merge: true });
         // salva peso inicial como entrada no subcollection 'weights'
-        await addDoc(collection(db, 'users', uid, 'weights'), { date: new Date().toISOString().split('T')[0], weight: tempOnboardingData.kgInicial });
+        await addDoc(collection(db, 'users', uid, 'weights'), { date: getLocalDateStr(), weight: tempOnboardingData.kgInicial });
         userData = tempOnboardingData;
         showApp();
         loadAllData();
@@ -230,7 +239,14 @@ window.onload = function() {
     }
 }
 
-// ===== METAS (GOALS) =====
+// Retorna data local no formato YYYY-MM-DD (evita bug de fuso UTC)
+function getLocalDateStr(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
 window.addGoal = async function() {
     const text = document.getElementById('new-goal-input').value.trim();
     const target = parseFloat(document.getElementById('new-goal-target').value);
@@ -238,13 +254,17 @@ window.addGoal = async function() {
     if(!text || !target || isNaN(target)) return alert('Preencha a descrição e a quantidade alvo');
 
     const isDaily = document.getElementById('new-goal-daily').checked;
+    const deadlineVal = document.getElementById('new-goal-deadline').value;
     const goal = { text, createdAt: Date.now(), target: target, current: 0, unit, isDaily };
+    if(deadlineVal) goal.deadline = deadlineVal;
     if(currentUser) {
         try {
             await addDoc(collection(db, 'users', currentUser.uid, 'goals'), goal);
             document.getElementById('new-goal-input').value = '';
             document.getElementById('new-goal-target').value = '';
             document.getElementById('new-goal-daily').checked = false;
+            const dlField = document.getElementById('new-goal-deadline');
+            if(dlField) dlField.value = '';
             loadGoals();
         } catch(e) { console.error(e); alert('Erro ao adicionar meta'); }
     } else {
@@ -252,18 +272,7 @@ window.addGoal = async function() {
     }
 }
 
-function parseGoalTarget(text) {
-    const match = text.match(/(\d+)/);
-    return match ? parseInt(match[1], 10) : null;
-}
 
-function detectGoalUnit(text) {
-    const lower = text.toLowerCase();
-    if(lower.includes('água') || lower.includes('ml') || lower.includes('litro')) return 'ml';
-    if(lower.includes('flexão') || lower.includes('abdominais') || lower.includes('séries')) return 'reps';
-    if(lower.includes('km') || lower.includes('correr')) return 'km';
-    return 'qty';
-}
 
 async function loadGoals() {
     if(!currentUser) return;
@@ -282,10 +291,18 @@ async function loadGoals() {
         list.innerHTML = '';
         const goals = [];
         snap.forEach(s => goals.push({ id: s.id, ...s.data() }));
+        // Sort: incomplete first sorted by progress desc, then complete
+        goals.sort((a, b) => {
+            const pa = (a.current / a.target) || 0;
+            const pb = (b.current / b.target) || 0;
+            if(pa >= 1 && pb < 1) return 1;
+            if(pb >= 1 && pa < 1) return -1;
+            return pb - pa;
+        });
         goals.forEach(g => {
-            const el = createGoalCard(g);
-            container.appendChild(el);
-            list.appendChild(el.cloneNode(true));
+            // Create two independent cards (no cloneNode — listeners would be lost)
+            container.appendChild(createGoalCard(g));
+            list.appendChild(createGoalCard(g));
         });
     } catch(e) { console.error(e); }
 }
@@ -299,10 +316,18 @@ function createGoalCard(g) {
     if(percent >= 100) fillColor = '#00ff66';
     else if(percent >= 50) fillColor = '#ffd700';
 
+    let deadlineHtml = '';
+    if(g.deadline) {
+        const daysLeft = Math.ceil((new Date(g.deadline) - new Date()) / (1000*60*60*24));
+        const dColor = daysLeft < 3 ? '#ff6b6b' : daysLeft < 7 ? '#ffd700' : 'var(--neon-dark)';
+        const dText = daysLeft < 0 ? '⚠️ Prazo expirado' : daysLeft === 0 ? '⚠️ Hoje é o prazo!' : `⏳ ${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}`;
+        deadlineHtml = `<span style="font-size:11px;color:${dColor};margin-left:6px;">${dText}</span>`;
+    }
+
     card.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: start;">
             <div>
-                <h4>${g.text} ${g.isDaily ? '<span style="font-size:10px;background:rgba(0,229,255,0.15);border:1px solid var(--neon-blue);color:var(--neon-blue);padding:2px 7px;border-radius:10px;">Diária</span>' : ''}</h4>
+                <h4>${g.text} ${g.isDaily ? '<span style="font-size:10px;background:rgba(0,229,255,0.15);border:1px solid var(--neon-blue);color:var(--neon-blue);padding:2px 7px;border-radius:10px;">Diária</span>' : ''}${deadlineHtml}</h4>
                 <p style="font-size: 12px; color: var(--neon-dark);">${g.current} ${unit} / ${g.target} ${unit}</p>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
@@ -324,6 +349,46 @@ window.deleteGoal = async function(id) {
     try {
         await deleteDoc(doc(db, 'users', currentUser.uid, 'goals', id));
         loadGoals();
+    } catch(e) { console.error(e); }
+}
+
+async function loadCompletedGoals() {
+    if(!currentUser) return;
+    const list = document.getElementById('completed-goals-list');
+    if(!list) return;
+    list.innerHTML = '';
+    try {
+        const snap = await getDocs(collection(db, 'users', currentUser.uid, 'completedGoals'));
+        if(snap.empty) {
+            list.innerHTML = '<p style="text-align:center;color:var(--neon-dark);font-size:13px;">Nenhuma meta concluída ainda. Continue assim! 💪</p>';
+            return;
+        }
+        const arr = [];
+        snap.forEach(s => arr.push({ id: s.id, ...s.data() }));
+        arr.sort((a,b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
+        arr.forEach(g => {
+            const card = document.createElement('div');
+            card.className = 'card neon-border';
+            card.style.cssText = 'opacity:0.85;border-color:#00ff66;box-shadow:0 0 8px rgba(0,255,102,0.2);';
+            card.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <h4 style="color:#00ff66;">✅ ${g.text}</h4>
+                        <p style="font-size:11px;color:var(--neon-dark);">${g.target} ${g.unit} · Concluída em ${g.completedAt || '?'}</p>
+                    </div>
+                    <button onclick="deleteCompletedGoal('${g.id}')" class="btn-delete" style="font-size:11px;">✕</button>
+                </div>
+            `;
+            list.appendChild(card);
+        });
+    } catch(e) { console.error(e); }
+}
+
+window.deleteCompletedGoal = async function(id) {
+    if(!currentUser) return;
+    try {
+        await deleteDoc(doc(db, 'users', currentUser.uid, 'completedGoals', id));
+        loadCompletedGoals();
     } catch(e) { console.error(e); }
 }
 
@@ -359,6 +424,8 @@ window.openProgressModal = function(id, text, target, current, unit, isDaily) {
         ['1','5','10'].forEach(v=>{ const b=document.createElement('button'); b.className='btn-small'; b.innerText='+'+v; b.onclick=()=>{ document.getElementById('modal-progress-input').value = parseFloat(document.getElementById('modal-progress-input').value||0)+parseFloat(v); }; quick.appendChild(b); });
     } else if(unit === 'km') {
         const b=document.createElement('button'); b.className='btn-small'; b.innerText='+1km'; b.onclick=()=>{ document.getElementById('modal-progress-input').value = parseFloat(document.getElementById('modal-progress-input').value||0)+1; }; quick.appendChild(b);
+    } else if(unit === 'sono') {
+        ['6','7','8','9'].forEach(v=>{ const b=document.createElement('button'); b.className='btn-small'; b.innerText=v+'h'; b.onclick=()=>{ document.getElementById('modal-progress-input').value = parseFloat(v); }; quick.appendChild(b); });
     }
     document.getElementById('modal-add-progress').style.display = 'block';
 }
@@ -384,7 +451,7 @@ window.saveProgress = async function() {
             text: currentGoalData.text,
             amount: amount,
             unit: currentGoalData.unit,
-            date: new Date().toISOString().split('T')[0],
+            date: getLocalDateStr(),
             completed: newCurrent >= currentGoalData.target
         });
 
@@ -401,12 +468,17 @@ window.saveProgress = async function() {
                 loadGoals();
                 showCelebrationBanner('🎉 Meta diária cumprida! Parabéns!');
             } else {
-                // Meta normal: remove após celebração
+                // Meta normal: arquiva em 'completedGoals' em vez de deletar
                 showCelebrationBanner('🏆 Meta concluída! Incrível!');
                 try {
+                    await addDoc(collection(db, 'users', currentUser.uid, 'completedGoals'), {
+                        ...currentGoalData,
+                        completedAt: getLocalDateStr()
+                    });
                     await deleteDoc(doc(db, 'users', currentUser.uid, 'goals', currentGoalData.id));
                 } catch(e) { console.error(e); }
                 loadGoals();
+                loadCompletedGoals();
             }
             return;
         }
@@ -418,8 +490,13 @@ window.saveProgress = async function() {
 
 async function grantXPForGoal(uid, goal) {
     try {
-        // XP simples: base 10 * target
-        const xpGain = Math.max(5, Math.round(goal.target * 10));
+        // XP com tecto: metas diárias max 50 XP, metas normais max 200 XP
+        let xpGain;
+        if(goal.isDaily) {
+            xpGain = Math.min(50, Math.max(5, Math.round(goal.target / 100) + 10));
+        } else {
+            xpGain = Math.min(200, Math.max(10, Math.round(goal.target * 2)));
+        }
         const userRef = doc(db, 'users', uid);
         const snap = await getDoc(userRef);
         let xp = 0;
@@ -583,8 +660,37 @@ function loadProfileData() {
     document.getElementById('profile-weight-current').innerText = `${wa} kg`;
     document.getElementById('profile-objetivo').innerText = obj;
     document.querySelector('.quote').innerText = userData.frase || 'A dor de hoje é a força de amanhã.';
-    document.getElementById('profile-level').innerText = userData.level || 1;
-    document.getElementById('profile-xp').innerText = (userData.xp || 0) + ' XP';
+
+    const xp = userData.xp || 0;
+    const level = userData.level || 1;
+    const xpForThisLevel = (level - 1) * 100;
+    const xpForNextLevel = level * 100;
+    const xpInLevel = xp - xpForThisLevel;
+    const xpNeeded = xpForNextLevel - xpForThisLevel;
+    const xpPct = Math.min(100, Math.round((xpInLevel / xpNeeded) * 100));
+
+    document.getElementById('profile-level').innerText = level;
+    document.getElementById('profile-xp').innerText = `${xp} XP`;
+
+    // Barra de XP na tela inicial
+    const homeXpBar = document.getElementById('home-xp-bar');
+    const homeXpLabel = document.getElementById('home-xp-label');
+    if(homeXpBar) homeXpBar.style.width = xpPct + '%';
+    if(homeXpLabel) homeXpLabel.innerText = `Nível ${level} · ${xpInLevel}/${xpNeeded} XP`;
+
+    // Avatar com inicial como fallback
+    const profileImg = document.getElementById('profile-img');
+    const savedPic = localStorage.getItem('profilePic') || userData.profilePic;
+    if(savedPic) {
+        profileImg.src = savedPic;
+    } else {
+        const name = userData.displayname || currentUser?.displayName || 'A';
+        const initial = name.charAt(0).toUpperCase();
+        const colors = ['#005bb5','#7b2ff7','#e91e63','#00897b','#f57c00'];
+        const color = colors[initial.charCodeAt(0) % colors.length];
+        profileImg.src = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='${color}'/><text x='50' y='65' font-size='42' text-anchor='middle' fill='white' font-family='Segoe UI,sans-serif' font-weight='bold'>${initial}</text></svg>`)}`;
+    }
+
     calcularIMC();
 }
 
@@ -592,13 +698,13 @@ function loadProfileData() {
 async function updateStreak() {
     if(!currentUser) return;
     try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDateStr();
         const lastAccess = userData.ultimoAcesso;
 
         if(lastAccess !== today) {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            const yesterdayStr = getLocalDateStr(yesterday);
 
             if(lastAccess === yesterdayStr) {
                 // Continua sequência
@@ -620,7 +726,9 @@ async function loadAllData() {
     if(!currentUser) return;
     const uid = currentUser.uid;
 
-    document.getElementById('greeting').innerText = `Bem vindo(a), ${currentUser.displayName || 'Atleta'}!`;
+    const hour = new Date().getHours();
+    const greetWord = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+    document.getElementById('greeting').innerText = `${greetWord}, ${currentUser.displayName || 'Atleta'}!`;
     
     await loadUserData(uid);
     await updateStreak();
@@ -629,6 +737,7 @@ async function loadAllData() {
     loadRewards();
     loadProfileData();
     loadWeightHistory();
+    loadCompletedGoals();
     restoreReminders();
 }
 
@@ -647,7 +756,7 @@ window.addMeasurements = async function() {
 
     try {
         const uid = currentUser.uid;
-        const date = new Date().toISOString().split('T')[0];
+        const date = getLocalDateStr();
         const updates = {};
 
         if(peso !== null) {
@@ -698,7 +807,7 @@ async function generateWeeklyRecap() {
     try {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        const since = sevenDaysAgo.toISOString().split('T')[0];
+        const since = getLocalDateStr(sevenDaysAgo);
 
         const snap = await getDocs(collection(db, 'users', currentUser.uid, 'progressLogs'));
         const logs = [];
@@ -828,7 +937,7 @@ function calcularIMC() {
 // ===== RESET METAS DIÁRIAS =====
 async function resetDailyGoals() {
     if(!currentUser) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
     const lastReset = localStorage.getItem('lastDailyReset_' + currentUser.uid);
     if(lastReset === today) return; // já resetou hoje
 
