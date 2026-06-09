@@ -1,0 +1,20 @@
+{
+  "name": "corpo-bem",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Treino, metas e foco - app com Firebase, build empacotado com esbuild e ofuscado com javascript-obfuscator para o deploy na Netlify.",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Guilherme Araujo de Castro",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "javascript-obfuscator": "^4.1.1"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.3.0",
+    "web-push": "^3.6.7"
+  }
+}

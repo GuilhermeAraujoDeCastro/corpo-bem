@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Cada usuário só pode ler/escrever os próprios dados: o documento
+    // users/{userId} e tudo dentro dele (goals, rewards, weights,
+    // progressLogs, completedGoals). Sem isso publicado no console, TODA
+    // leitura/escrita no Firestore falha com "Missing or insufficient
+    // permissions" depois do login — foi exatamente esse o motivo do app
+    // parecer quebrado. Veja o README para o passo a passo de publicação.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+}

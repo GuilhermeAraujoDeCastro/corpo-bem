@@ -1,47 +1,33 @@
-const CACHE_NAME = 'corpo-bem-v2';
+const CACHE_NAME = 'corpo-bem-v3';
 const ASSETS_TO_CACHE = [
   '/index.html',
-  '/Style.css',
-  '/App.js',
-  '/manifest.json'
+  '/css/style.css',
+  '/js/main.js',
+  '/manifest.json',
+  '/assets/icons/icon-192.svg',
+  '/assets/icons/icon-512.svg'
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(err => {
-        console.warn('Alguns assets não puderam ser cacheados:', err);
-      });
-    })
+    caches.open(CACHE_NAME).then(cache =>
+      cache.addAll(ASSETS_TO_CACHE).catch(err => console.warn('Alguns assets não puderam ser cacheados:', err))
+    )
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
   const url = event.request.url;
-
-  // Ignora tudo que não seja http/https (ex: chrome-extension://)
   if (!url.startsWith('http')) return;
-
-  // Ignora Firebase, Google APIs, CDNs externos, placeholders
-  const skipDomains = [
-    'firestore.googleapis.com',
-    'firebase',
-    'gstatic.com/firebasejs',
-    'googleapis.com',
-    'placeholder.com',
-    'cdn.jsdelivr.net',
-    'cdnjs.cloudflare.com'
-  ];
+  const skipDomains = ['firestore.googleapis.com', 'firebase', 'gstatic.com/firebasejs', 'googleapis.com', 'placeholder.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'];
   if (skipDomains.some(d => url.includes(d))) return;
 
   event.respondWith(
@@ -53,13 +39,35 @@ self.addEventListener('fetch', event => {
         }
         return response;
       })
-      .catch(() => {
-        return caches.match(event.request).then(cached => {
-          if (cached) return cached;
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-        });
-      })
+      .catch(() => caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        if (event.request.mode === 'navigate') return caches.match('/index.html');
+      }))
+  );
+});
+
+// ===== PUSH: recebe e exibe notificações mesmo com o app fechado =====
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { title: 'Corpo Bem', body: event.data ? event.data.text() : '' }; }
+  const title = data.title || 'Corpo Bem';
+  const options = {
+    body: data.body || '',
+    icon: 'assets/icons/icon-192.svg',
+    badge: 'assets/icons/icon-192.svg',
+    data: { url: data.url || '/index.html' }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/index.html';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then(clientsArr => {
+      const existing = clientsArr.find(c => c.url.includes(self.registration.scope));
+      if (existing) return existing.focus();
+      return self.clients.openWindow(url);
+    })
   );
 });

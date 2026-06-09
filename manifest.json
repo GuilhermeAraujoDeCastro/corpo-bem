@@ -1,24 +1,31 @@
 {
   "name": "Corpo Bem",
-  "short_name": "CorporBem",
-  "description": "Treino, Metas e Foco",
+  "short_name": "Corpo Bem",
+  "description": "Treino, metas e foco, direto do seu bolso.",
   "start_url": "/index.html",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#050510",
-  "theme_color": "#00e5ff",
+  "background_color": "#0A0D12",
+  "theme_color": "#0A0D12",
   "orientation": "portrait",
   "icons": [
+    { "src": "assets/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "assets/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%23050510'/><text x='96' y='130' font-size='100' text-anchor='middle'>💪</text></svg>",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "name": "Registrar água",
+      "short_name": "Água",
+      "description": "Registrar água rapidamente",
+      "url": "/index.html?action=quick-water",
+      "icons": [{ "src": "assets/icons/icon-192.svg", "sizes": "192x192" }]
     },
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%23050510'/><text x='256' y='350' font-size='280' text-anchor='middle'>💪</text></svg>",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "name": "Registrar treino",
+      "short_name": "Treino",
+      "description": "Registrar treino rapidamente",
+      "url": "/index.html?action=quick-workout",
+      "icons": [{ "src": "assets/icons/icon-192.svg", "sizes": "192x192" }]
     }
   ]
 }
