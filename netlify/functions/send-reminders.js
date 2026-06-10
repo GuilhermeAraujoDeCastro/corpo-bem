@@ -56,7 +56,6 @@ export default async () => {
     }
 
     const now = new Date();
-    const utcHour = now.getUTCHours();
     const spHour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(now));
 
     const snap = await db.collection('users').get();
@@ -68,8 +67,10 @@ export default async () => {
         if (!sub) return;
         const reminders = user.reminders || {};
 
-        // Água: a cada 2 horas (o cron roda de hora em hora; aqui filtra as horas pares em UTC).
-        if (reminders.water && utcHour % 2 === 0) {
+        // Água: a cada 2 horas, só em horário acordado (8h-22h) em São Paulo.
+        // Antes o filtro usava a hora em UTC direto, o que mandava lembrete
+        // de água de madrugada (1h, 3h, 5h...) no horário de Brasília.
+        if (reminders.water && spHour >= 8 && spHour <= 22 && spHour % 2 === 0) {
             sends.push(sendPush(db, docSnap.id, sub, { title: '💧 Hora de beber água!', body: 'Não esqueça de se manter hidratado(a).' }));
         }
         // Meta diária: uma vez por dia, às 20h no horário de São Paulo.

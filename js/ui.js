@@ -106,17 +106,27 @@ export function showConfirm(message, confirmLabel = 'Confirmar') {
 }
 
 // ===== PROMPT (substitui prompt()), usado em "editar meta" e "recuperar senha" =====
+function escapeHtmlPrompt(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+}
+
 export function showPrompt({ title, fields }) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
         overlay.className = 'confirm-overlay';
+        // Escapado porque "editar meta" reusa esse modal com o texto da
+        // propria meta (dado que a pessoa digitou antes) como valor
+        // inicial do campo - sem isso, um texto com aspas quebraria pra
+        // fora do atributo value="".
         const fieldsHtml = fields.map(f => `
-            <label class="prompt-label">${f.label}</label>
-            <input type="${f.type || 'text'}" id="prompt-${f.id}" value="${f.value ?? ''}" placeholder="${f.placeholder ?? ''}">
+            <label class="prompt-label">${escapeHtmlPrompt(f.label)}</label>
+            <input type="${f.type || 'text'}" id="prompt-${f.id}" value="${escapeHtmlPrompt(f.value ?? '')}" placeholder="${escapeHtmlPrompt(f.placeholder ?? '')}">
         `).join('');
         overlay.innerHTML = `
             <div class="confirm-box">
-                <h3>${title}</h3>
+                <h3>${escapeHtmlPrompt(title)}</h3>
                 ${fieldsHtml}
                 <div class="confirm-actions">
                     <button type="button" class="btn-secondary prompt-cancel">Cancelar</button>

@@ -38,15 +38,29 @@ async function loadUserData(uid) {
     try {
         const snap = await getDoc(doc(db, 'users', uid));
         if (snap.exists()) state.userData = snap.data();
+        return true;
     } catch (e) {
         console.error('Erro carregando dados do usuário', e);
-        showToast('Não consegui carregar seus dados agora. Verifique sua conexão.', 'error');
+        return false;
     }
 }
 
 async function routeAfterAuth(user) {
     state.currentUser = user;
-    await loadUserData(user.uid);
+    const carregou = await loadUserData(user.uid);
+    if (!carregou) {
+        // Correção: antes, qualquer falha ao carregar os dados (permissão do
+        // Firestore ainda não publicada, conexão instável, extensão do
+        // navegador bloqueando a requisição) caía direto no bloco de baixo e
+        // mandava a pessoa pro onboarding, como se fosse conta nova. Pra
+        // quem já tinha conta, terminar o onboarding de novo sobrescrevia
+        // peso, altura e zerava a sequência de dias. Agora uma falha real
+        // de carregamento não decide nada sozinha: volta pro login com um
+        // aviso, em vez de arriscar apagar o progresso de quem já tem conta.
+        showLogin();
+        showToast('Não consegui carregar sua conta agora. Verifique sua conexão (ou uma extensão do navegador bloqueando o Firebase) e entre de novo.', 'error');
+        return;
+    }
     if (!state.userData.kgInicial) {
         showOnboardingScreen();
         window.showOnboardingStep('weight');
@@ -64,7 +78,11 @@ window.goLogin = async function () {
     const password = document.getElementById('login-password').value;
     if (!username || !password) { showToast('Preencha usuário e senha.', 'error'); return; }
 
-    const email = `${username}@webtreino.local`;
+    // Login sempre em minusculas: Firebase ja trata e-mail de forma
+    // insensivel a maiusculas/minusculas por baixo dos panos, entao
+    // isso so garante que o app monte o mesmo endereco pseudo de
+    // sempre, em vez de depender de como a pessoa digitou dessa vez.
+    const email = `${username.toLowerCase()}@webtreino.local`;
     state.authActionInProgress = true;
     try {
         const userCred = await signInWithEmailAndPassword(auth, email, password);
@@ -95,13 +113,16 @@ window.goSignup = async function () {
         return;
     }
 
-    const email = `${username}@webtreino.local`;
+    // Mesmo motivo do login: sempre minusculas, pra combinar com o que
+    // o Firebase ja faz internamente e evitar contas "quase iguais".
+    const usernameLower = username.toLowerCase();
+    const email = `${usernameLower}@webtreino.local`;
     state.authActionInProgress = true;
     try {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCred.user, { displayName: displayname });
         state.currentUser = userCred.user;
-        await setDoc(doc(db, 'users', userCred.user.uid), { username, displayname, createdAt: Date.now() }, { merge: true });
+        await setDoc(doc(db, 'users', userCred.user.uid), { username: usernameLower, displayname, createdAt: Date.now() }, { merge: true });
         tempOnboardingData = {};
         showOnboardingScreen();
         window.showOnboardingStep('weight');
@@ -137,9 +158,18 @@ window.goForgotPassword = async function () {
         fields: [{ id: 'login', label: 'Usuário ou e-mail', placeholder: 'ex: claudio' }]
     });
     if (!result || !result.login) return;
-    const email = result.login.includes('@') ? result.login : `${result.login}@webtreino.local`;
+    if (!result.login.includes('@')) {
+        // Contas criadas so com nome de usuario nao tem um e-mail de
+        // verdade por tras (o login usa um endereco interno, tipo
+        // "usuario@webtreino.local", que nao existe pra receber nada).
+        // Chamar sendPasswordResetEmail nesse endereco nao da erro, mas
+        // o e-mail nunca chega a lugar nenhum - entao, em vez de fingir
+        // que funcionou, avisamos isso direto.
+        showToast('Contas com nome de usuário (sem e-mail cadastrado) ainda não têm recuperação automática de senha. Se lembrar a senha antiga, entre normalmente; senão, crie uma nova conta.', 'info');
+        return;
+    }
     try {
-        await sendPasswordResetEmail(auth, email);
+        await sendPasswordResetEmail(auth, result.login);
         showToast('Se a conta existir, o e-mail de recuperação foi enviado.', 'success');
     } catch (err) {
         showToast(friendlyAuthError(err), 'error');
@@ -165,7 +195,7 @@ window.nextOnboardingStep = function (from) {
         window.showOnboardingStep('goal');
     } else if (from === 'target-weight') {
         const targetWeight = document.getElementById('onboard-target-weight').value;
-        if (!targetWeight) { showToast('Digite seu peso alvo.', 'error'); return; }
+        if (!targetWeight || parseFloat(targetWeight) <= 0) { showToast('Digite um peso alvo válido.', 'error'); return; }
         tempOnboardingData.kgAlvo = parseFloat(targetWeight);
         window.showOnboardingStep('target-height');
     } else if (from === 'target-height') {
@@ -190,8 +220,13 @@ window.finishOnboarding = async function () {
     tempOnboardingData.frase = phrase;
     tempOnboardingData.kgAtual = tempOnboardingData.kgInicial;
     tempOnboardingData.alturaAtual = tempOnboardingData.alturaInicial;
-    tempOnboardingData.sequencia = 0;
-    tempOnboardingData.ultimoAcesso = getLocalDateStr();
+    // sequencia e ultimoAcesso nao sao definidos aqui: o primeiro
+    // updateStreak() (chamado logo em seguida, dentro de loadAllData)
+    // ja inicializa os dois corretamente pra "1 dia", como se fosse o
+    // primeiro acesso de verdade. Se fixassemos sequencia=0 e
+    // ultimoAcesso=hoje aqui, o updateStreak() de hoje mesmo cairia no
+    // caminho de "ja acessou hoje" e nunca chegaria a 1 - a sequencia
+    // ficava sempre um dia atrasada em relacao ao uso real.
 
     const uid = state.currentUser.uid;
     try {

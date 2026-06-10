@@ -81,7 +81,14 @@ function createGoalCard(g) {
 
     let deadlineHtml = '';
     if (g.deadline) {
-        const daysLeft = Math.ceil((new Date(g.deadline) - new Date()) / (1000 * 60 * 60 * 24));
+        // Comparacao por data de calendario local, nao por instante UTC:
+        // "new Date(g.deadline)" sozinho e interpretado como meia-noite
+        // UTC, enquanto "new Date()" e o instante local agora. No fuso
+        // de Brasilia isso fazia o prazo parecer vencer ate 3h mais cedo
+        // do que deveria, perto da virada do dia.
+        const todayLocal = new Date(getLocalDateStr() + 'T00:00:00');
+        const deadlineLocal = new Date(g.deadline + 'T00:00:00');
+        const daysLeft = Math.round((deadlineLocal - todayLocal) / (1000 * 60 * 60 * 24));
         const dColor = daysLeft < 3 ? 'var(--danger)' : daysLeft < 7 ? 'var(--warning)' : 'var(--text-muted)';
         const dText = daysLeft < 0 ? '⚠️ Prazo expirado' : daysLeft === 0 ? '⚠️ Hoje é o prazo!' : `⏳ ${daysLeft} dia${daysLeft !== 1 ? 's' : ''} restante${daysLeft !== 1 ? 's' : ''}`;
         deadlineHtml = `<span class="goal-deadline" style="color:${dColor};">${dText}</span>`;

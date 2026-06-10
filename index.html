@@ -17,6 +17,7 @@
     <meta name="description" content="Treino, metas e foco: um app simples pra acompanhar hidratação, exercícios e evolução de peso no dia a dia.">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0A0D12">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Corpo Bem">
@@ -287,8 +288,8 @@
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('modal-edit-profile')">&times;</span>
             <h3>Editar perfil</h3>
-            <label class="prompt-label">Novo nome de usuário</label>
-            <input type="text" id="edit-username" placeholder="Novo nome de usuário">
+            <label class="prompt-label">Como devemos te chamar?</label>
+            <input type="text" id="edit-displayname" placeholder="Seu nome de exibição">
             <label class="prompt-label">Frase de motivação</label>
             <input type="text" id="edit-phrase" placeholder="Sua frase de motivação">
             <button type="button" onclick="saveProfileChanges()" class="btn-primary">Salvar</button>

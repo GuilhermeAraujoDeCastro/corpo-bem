@@ -1,6 +1,6 @@
 // Perfil: dados pessoais, peso/altura, IMC, gráfico de evolução (peso + IMC
 // na mesma linha do tempo), sequência com "congelador" semanal e badges.
-import { db, doc, setDoc, getDoc, collection, addDoc, getDocs } from './firebase-config.js';
+import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, updateProfile } from './firebase-config.js';
 import { state, getLocalDateStr, isValidHeight } from './state.js';
 import { showToast } from './ui.js';
 
@@ -79,9 +79,15 @@ export function renderProfileSummary() {
 function renderAvatar() {
     const profileImg = document.getElementById('profile-img');
     if (!profileImg) return;
-    let savedPic = null;
-    try { savedPic = localStorage.getItem('profilePic'); } catch (e) {}
-    savedPic = savedPic || state.userData.profilePic;
+    // A foto vem primeiro do Firestore (state.userData.profilePic), que
+    // ja esta carregado nesse ponto e e o dado certo da conta logada.
+    // O cache em localStorage e so um plano B, com chave por conta
+    // (evita vazar a foto de uma conta pra outra num navegador
+    // compartilhado por mais de uma conta).
+    let savedPic = state.userData.profilePic || null;
+    if (!savedPic && state.currentUser) {
+        try { savedPic = localStorage.getItem(`profilePic_${state.currentUser.uid}`); } catch (e) {}
+    }
     if (savedPic) {
         profileImg.src = savedPic;
     } else {
@@ -114,7 +120,9 @@ window.salvarFoto = function (event) {
     reader.onload = async function (e) {
         const base64 = e.target.result;
         document.getElementById('profile-img').src = base64;
-        try { localStorage.setItem('profilePic', base64); } catch (err) {}
+        if (state.currentUser) {
+            try { localStorage.setItem(`profilePic_${state.currentUser.uid}`, base64); } catch (err) {}
+        }
         if (state.currentUser) {
             try { await setDoc(doc(db, 'users', state.currentUser.uid), { profilePic: base64 }, { merge: true }); }
             catch (err) { console.error(err); }
@@ -262,22 +270,28 @@ function renderStreakDisplay() {
 }
 
 window.showEditProfile = function () {
-    document.getElementById('edit-username').value = state.userData.username || '';
+    document.getElementById('edit-displayname').value = state.userData.displayname || state.currentUser?.displayName || '';
     document.getElementById('edit-phrase').value = state.userData.frase || '';
     document.getElementById('modal-edit-profile').style.display = 'block';
 };
 
 window.saveProfileChanges = async function () {
-    const newUsername = document.getElementById('edit-username').value.trim();
+    // Antes esse campo editava "username", um dado que nunca aparecia
+    // em lugar nenhum do app (o login usa um valor fixo, definido so na
+    // criacao da conta, e nao le esse campo de volta). Agora edita o
+    // nome de exibicao de verdade: o que aparece na saudacao da tela de
+    // inicio e no avatar quando nao ha foto.
+    const newDisplayname = document.getElementById('edit-displayname').value.trim();
     const newPhrase = document.getElementById('edit-phrase').value.trim();
     if (!state.currentUser) return;
     try {
         const updates = {};
-        if (newUsername) updates.username = newUsername;
+        if (newDisplayname) updates.displayname = newDisplayname;
         if (newPhrase) updates.frase = newPhrase;
         if (Object.keys(updates).length > 0) {
             await setDoc(doc(db, 'users', state.currentUser.uid), updates, { merge: true });
             state.userData = { ...state.userData, ...updates };
+            if (newDisplayname) await updateProfile(state.currentUser, { displayName: newDisplayname });
         }
         document.getElementById('modal-edit-profile').style.display = 'none';
         renderProfileSummary();
