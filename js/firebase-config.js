@@ -61,5 +61,3 @@ export {
     query,
     where
 };
-
-console.log("Firebase conectado com sucesso!");

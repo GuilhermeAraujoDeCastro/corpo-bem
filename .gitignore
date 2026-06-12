@@ -4,3 +4,4 @@ dist/
 .env
 .DS_Store
 _to_delete/
+Claude outputs/

@@ -111,24 +111,49 @@ function renderBadges() {
     `).join('');
 }
 
-window.salvarFoto = function (event) {
+function _comprimirFotoPerfil(file, maxDimensao = 320, qualidade = 0.75) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (e) => { img.src = e.target.result; };
+        reader.onerror = reject;
+        img.onload = () => {
+            let { width, height } = img;
+            if (width > height && width > maxDimensao) { height *= maxDimensao / width; width = maxDimensao; }
+            else if (height > maxDimensao) { width *= maxDimensao / height; height = maxDimensao; }
+            const canvas = document.createElement('canvas');
+            canvas.width = width; canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            canvas.toBlob(blob => {
+                if (!blob) { reject(new Error('Falha ao comprimir imagem')); return; }
+                const outReader = new FileReader();
+                outReader.onload = () => resolve(outReader.result);
+                outReader.onerror = reject;
+                outReader.readAsDataURL(blob);
+            }, 'image/jpeg', qualidade);
+        };
+        img.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+window.salvarFoto = async function (event) {
     const file = event.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { showToast('Escolha uma imagem de até 2MB.', 'error'); return; }
+    if (file.size > 8 * 1024 * 1024) { showToast('Escolha uma imagem de até 8MB.', 'error'); return; }
 
-    const reader = new FileReader();
-    reader.onload = async function (e) {
-        const base64 = e.target.result;
+    try {
+        const base64 = await _comprimirFotoPerfil(file);
         document.getElementById('profile-img').src = base64;
         if (state.currentUser) {
             try { localStorage.setItem(`profilePic_${state.currentUser.uid}`, base64); } catch (err) {}
-        }
-        if (state.currentUser) {
             try { await setDoc(doc(db, 'users', state.currentUser.uid), { profilePic: base64 }, { merge: true }); }
             catch (err) { console.error(err); }
         }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+        console.error(err);
+        showToast('Não consegui processar essa imagem. Tente outra.', 'error');
+    }
 };
 
 window.addMeasurements = async function () {
