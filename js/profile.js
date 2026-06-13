@@ -320,5 +320,15 @@ window.saveProfileChanges = async function () {
         }
         document.getElementById('modal-edit-profile').style.display = 'none';
         renderProfileSummary();
+        // A saudacao do dashboard (#greeting) e preenchida uma unica vez no
+        // carregamento inicial (loadAllData, em main.js) usando o nome de
+        // exibicao de entao. Sem isto, editar o nome aqui so refletia na
+        // saudacao depois de recarregar a pagina inteira.
+        const greetingEl = document.getElementById('greeting');
+        if (greetingEl) {
+            const hour = new Date().getHours();
+            const greetWord = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+            greetingEl.innerText = `${greetWord}, ${state.currentUser.displayName || 'Atleta'}!`;
+        }
     } catch (e) { console.error(e); showToast('Erro ao salvar alterações.', 'error'); }
 };
