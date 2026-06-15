@@ -1,20 +1,20 @@
-// Ponto de entrada do app: importa os módulos, define o carregamento
-// agregado de dados (loadAllData) e conecta ao window as funções que o
-// HTML ainda usa via onclick (switchTab, toggleDarkMode, etc).
+// Ponto de entrada: tema, login, carregamento dos dados, perfil público (?perfil=uid) e PWA.
 import { state } from './state.js';
-import { switchTab, switchMetasSubtab, toggleDarkMode, openModal, closeModal } from './ui.js';
+import { switchTab, switchMetasSubtab, toggleDarkMode, openModal, closeModal, aplicarTema } from './ui.js';
 import { initAuth } from './auth.js';
 import { loadGoals, loadCompletedGoals, resetDailyGoals } from './goals.js';
 import { loadRewards } from './rewards.js';
-import { renderProfileSummary, loadWeightHistory, updateStreak } from './profile.js';
+import {
+    renderProfileSummary, loadWeightHistory, updateStreak, carregarDiasAtivos,
+    atualizarPerfilPublico, renderLinkPublico, mostrarPerfilPublico,
+} from './profile.js';
 import { restoreReminders, handleQuickActionFromUrl } from './notifications.js';
 import { tryShowWeeklyRecapAuto } from './recap.js';
+import { renderPlano } from './plano.js';
 
-window.switchTab = switchTab;
-window.switchMetasSubtab = switchMetasSubtab;
-window.toggleDarkMode = toggleDarkMode;
-window.openModal = openModal;
-window.closeModal = closeModal;
+Object.assign(window, { switchTab, switchMetasSubtab, toggleDarkMode, openModal, closeModal });
+
+aplicarTema();
 
 async function loadAllData() {
     if (!state.currentUser) return;
@@ -25,24 +25,23 @@ async function loadAllData() {
 
     await updateStreak();
     await resetDailyGoals();
-    await Promise.all([
-        loadGoals(),
-        loadRewards(),
-        loadWeightHistory(),
-        loadCompletedGoals()
-    ]);
+    await Promise.all([loadGoals(), loadRewards(), loadWeightHistory(), loadCompletedGoals(), carregarDiasAtivos()]);
     renderProfileSummary();
+    renderPlano();
+    renderLinkPublico();
     restoreReminders();
+    atualizarPerfilPublico();
     setTimeout(() => tryShowWeeklyRecapAuto(), 1200);
     handleQuickActionFromUrl();
 }
 
-initAuth(loadAllData);
+const perfilCompartilhado = new URLSearchParams(location.search).get('perfil');
+if (perfilCompartilhado) mostrarPerfilPublico(perfilCompartilhado);
+else initAuth(loadAllData);
 
-// Registra o Service Worker (cache offline + notificações push).
-if ('serviceWorker' in navigator) {
+// Service worker: cache offline e notificações push.
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .catch(err => console.warn('SW não registrado:', err));
+        navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW não registrado:', err));
     });
 }

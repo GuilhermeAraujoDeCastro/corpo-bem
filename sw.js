@@ -1,4 +1,5 @@
-const CACHE_NAME = 'corpo-bem-v3';
+// Rede primeiro, cache como reserva offline. O build troca __BUILD_ID__ a cada deploy.
+const CACHE_NAME = 'corpo-bem-__BUILD_ID__';
 const ASSETS_TO_CACHE = [
   '/index.html',
   '/css/style.css',

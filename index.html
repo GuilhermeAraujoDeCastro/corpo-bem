@@ -4,24 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <script>
-        // Aplica o tema salvo antes de qualquer render, pra não piscar o tema errado.
+        // Aplica o tema antes da 1a pintura (sem piscar): sistema, claro, escuro ou automático por horário.
         (function () {
+            var modo = 'sistema';
             try {
-                if (localStorage.getItem('darkMode') === 'true') {
-                    document.documentElement.classList.add('light-mode');
-                }
+                var antigo = localStorage.getItem('darkMode'); // versão antiga: 'true' = claro
+                modo = localStorage.getItem('corpo-tema') || (antigo === 'true' ? 'claro' : antigo === 'false' ? 'escuro' : 'sistema');
             } catch (e) {}
+            var hora = new Date().getHours();
+            var escuro = modo === 'escuro' || (modo === 'auto' && (hora >= 19 || hora < 6))
+                || (modo === 'sistema' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.dataset.theme = escuro ? 'dark' : 'light';
         })();
     </script>
-    <title>Corpo Bem</title>
-    <meta name="description" content="Treino, metas e foco: um app simples pra acompanhar hidratação, exercícios e evolução de peso no dia a dia.">
+    <title>Corpo Bem · treino, metas e hábitos</title>
+    <meta name="description" content="Acompanhe treino, água, sono e peso num app simples, com metas diárias, sequência e recompensas.">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0A0D12">
+    <meta name="theme-color" content="#0b0f14">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Corpo Bem">
     <link rel="icon" href="assets/icons/icon-192.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
@@ -31,58 +37,63 @@
 
     <div class="top-bar">
         <button type="button" id="install-app-btn" onclick="installApp()" hidden>Instalar app</button>
-        <button type="button" onclick="toggleDarkMode()" class="dark-toggle-btn" title="Alternar tema claro/escuro" aria-label="Alternar tema"></button>
+        <button type="button" onclick="toggleDarkMode()" class="dark-toggle-btn" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro"></button>
     </div>
 
-    <!-- TELA DE LOGIN -->
+    <!-- LOGIN -->
     <div id="login-screen" class="screen active">
         <div class="auth-card">
             <div class="auth-logo">💪</div>
             <h1>Corpo Bem</h1>
-            <p class="subtitle">Treino, metas e foco</p>
-            <input type="text" placeholder="Nome de usuário" id="login-username" autocomplete="username">
-            <input type="password" placeholder="Senha" id="login-password" autocomplete="current-password">
+            <p class="subtitle">Treino, água, sono e peso num lugar só.</p>
+            <label class="prompt-label" for="login-username">Usuário</label>
+            <input type="text" placeholder="ex: claudio" id="login-username" autocomplete="username">
+            <label class="prompt-label" for="login-password">Senha</label>
+            <input type="password" placeholder="Sua senha" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')goLogin()">
             <button type="button" onclick="goLogin()" class="btn-primary">Entrar</button>
-            <button type="button" onclick="goForgotPassword()" class="btn-secondary">Esqueceu a senha?</button>
+            <button type="button" onclick="goForgotPassword()" class="btn-link">Esqueceu a senha?</button>
             <div class="auth-divider">ou</div>
             <button type="button" onclick="loginWithGoogle()" class="btn-google">Entrar com Google</button>
             <p class="auth-footer-link">Não tem conta? <a href="#" onclick="showSignup(); return false;">Criar conta</a></p>
         </div>
     </div>
 
-    <!-- TELA DE CRIAR CONTA -->
+    <!-- CRIAR CONTA -->
     <div id="signup-screen" class="screen">
         <div class="auth-card">
             <div class="auth-logo">💪</div>
             <h1>Criar conta</h1>
-            <p class="subtitle">Comece sua jornada</p>
-            <input type="text" placeholder="Nome de usuário (ex: claudio)" id="signup-username" autocomplete="username">
-            <input type="text" placeholder="Como devemos te chamar? (ex: Claudinho)" id="signup-displayname" autocomplete="name">
-            <input type="password" placeholder="Senha" id="signup-password" autocomplete="new-password">
-            <input type="password" placeholder="Confirmar senha" id="signup-password-confirm" autocomplete="new-password">
+            <p class="subtitle">Leva menos de um minuto.</p>
+            <label class="prompt-label" for="signup-username">Usuário (pra entrar)</label>
+            <input type="text" placeholder="ex: claudio" id="signup-username" autocomplete="username">
+            <label class="prompt-label" for="signup-displayname">Como quer ser chamado</label>
+            <input type="text" placeholder="ex: Claudinho" id="signup-displayname" autocomplete="name">
+            <label class="prompt-label" for="signup-password">Senha</label>
+            <input type="password" placeholder="Mínimo 6 caracteres" id="signup-password" autocomplete="new-password">
+            <input type="password" placeholder="Repita a senha" id="signup-password-confirm" autocomplete="new-password" aria-label="Confirmar senha">
             <button type="button" onclick="goSignup()" class="btn-primary">Criar conta</button>
             <button type="button" onclick="loginWithGoogleSignup()" class="btn-google">Criar com Google</button>
             <p class="auth-footer-link">Já tem conta? <a href="#" onclick="showLogin(); return false;">Entrar</a></p>
         </div>
     </div>
 
-    <!-- TELA DE ONBOARDING -->
+    <!-- ONBOARDING -->
     <div id="onboarding-screen" class="screen">
         <div class="onboarding-card">
             <h2>Vamos começar!</h2>
-            <p>Preencha seus dados iniciais</p>
+            <p>Só o básico pra calcular seu progresso.</p>
 
             <div class="onboarding-step" id="step-weight">
                 <h3>Quantos kg você pesa?</h3>
                 <input type="number" id="onboard-weight" placeholder="Ex: 80" min="30" max="300" inputmode="decimal">
-                <span class="input-hint">Digite seu peso atual em kg</span>
+                <span class="input-hint">Seu peso atual em kg</span>
                 <button type="button" onclick="nextOnboardingStep('weight')" class="btn-primary">Próximo</button>
             </div>
 
             <div class="onboarding-step" id="step-height" style="display: none;">
                 <h3>Qual é sua altura?</h3>
                 <input type="text" id="onboard-height" placeholder="Ex: 1.80" inputmode="decimal">
-                <span class="input-hint">Formato: 1.80 (altura em metros)</span>
+                <span class="input-hint">Em metros, ex: 1.80</span>
                 <button type="button" onclick="nextOnboardingStep('height')" class="btn-primary">Próximo</button>
             </div>
 
@@ -90,61 +101,72 @@
                 <h3>Qual é seu objetivo?</h3>
                 <div class="goal-options">
                     <button type="button" onclick="selectObjective('perder')" class="goal-btn">📉 Perder peso</button>
-                    <button type="button" onclick="selectObjective('ganhar')" class="goal-btn">📈 Ganhar peso</button>
-                    <button type="button" onclick="selectObjective('manter')" class="goal-btn">⚖️ Manter peso</button>
+                    <button type="button" onclick="selectObjective('ganhar')" class="goal-btn">📈 Ganhar massa</button>
+                    <button type="button" onclick="selectObjective('manter')" class="goal-btn">⚖️ Manter e ter disposição</button>
                 </div>
             </div>
 
             <div class="onboarding-step" id="step-target-weight" style="display: none;">
                 <h3>Qual é seu peso alvo?</h3>
                 <input type="number" id="onboard-target-weight" placeholder="Ex: 75" min="30" max="300" inputmode="decimal">
-                <span class="input-hint">Seu objetivo de peso em kg</span>
+                <span class="input-hint">Onde você quer chegar, em kg</span>
                 <button type="button" onclick="nextOnboardingStep('target-weight')" class="btn-primary">Próximo</button>
             </div>
 
             <div class="onboarding-step" id="step-target-height" style="display: none;">
-                <h3>Qual é sua altura alvo?</h3>
+                <h3>E a altura de referência?</h3>
                 <input type="text" id="onboard-target-height" placeholder="Ex: 1.80" inputmode="decimal">
-                <span class="input-hint">Formato: 1.80 (em metros)</span>
+                <span class="input-hint">Usada no cálculo do IMC alvo (normalmente a sua altura atual)</span>
                 <button type="button" onclick="nextOnboardingStep('target-height')" class="btn-primary">Próximo</button>
             </div>
 
             <div class="onboarding-step" id="step-phrase" style="display: none;">
+                <h3>Metas pra começar</h3>
+                <span class="input-hint">Desmarque o que não quiser. Dá pra mudar depois.</span>
+                <div id="onboard-sugestoes" class="sugestoes-lista"></div>
                 <h3>Sua frase de motivação</h3>
-                <input type="text" id="onboard-phrase" placeholder="Ex: A dor de hoje é a força de amanhã.">
-                <span class="input-hint">Uma frase que te inspire a continuar</span>
+                <input type="text" id="onboard-phrase" placeholder="Ex: A dor de hoje é a força de amanhã." maxlength="120">
                 <button type="button" onclick="finishOnboarding()" class="btn-primary">Começar!</button>
             </div>
         </div>
     </div>
 
-    <!-- APP PRINCIPAL -->
+    <!-- APP -->
     <div id="main-app" class="screen">
         <!-- INÍCIO -->
         <section id="tab-inicio" class="tab-content active">
-            <h2 id="greeting" class="greeting-large">Bem-vindo(a)...</h2>
-            <p class="quote">"A dor de hoje é a força de amanhã."</p>
+            <header class="home-header">
+                <h2 id="greeting" class="greeting-large">Bem-vindo(a)...</h2>
+                <p class="quote">"A dor de hoje é a força de amanhã."</p>
+            </header>
 
-            <div class="streak-container">
-                <p class="streak">🔥 <span id="streak-count">0</span> dias</p>
+            <div class="stats-row">
+                <div class="stat-card streak-container">
+                    <span class="stat-label">Sequência</span>
+                    <strong class="streak">🔥 <span id="streak-count">0</span> <span id="streak-unidade">dias</span></strong>
+                </div>
+                <div class="stat-card xp-card">
+                    <span class="stat-label">⚡ Nível e XP</span>
+                    <strong id="home-xp-label" class="xp-value">Nível 1 · 0/100 XP</strong>
+                    <div class="progress-bar"><div class="fill" id="home-xp-bar" style="width:0%"></div></div>
+                </div>
             </div>
 
-            <div class="xp-card">
-                <div class="xp-card-top">
-                    <span class="xp-title">⚡ XP</span>
-                    <span id="home-xp-label" class="xp-value">Nível 1 · 0/100 XP</span>
-                </div>
-                <div class="progress-container" style="margin:0;">
-                    <div class="progress-bar"><div class="fill" id="home-xp-bar" style="width:0%; background:var(--accent);"></div></div>
-                </div>
+            <div class="card" id="hidratacao-card"></div>
+            <div class="card" id="plano-card"></div>
+
+            <div class="card">
+                <p class="card-title">📅 Seus dias ativos</p>
+                <div id="sequencia-calendario"></div>
             </div>
 
+            <h3 class="section-title">Metas de hoje</h3>
             <div id="goals-container"></div>
         </section>
 
         <!-- METAS -->
         <section id="tab-metas" class="tab-content">
-            <h2 class="text-center" style="margin: 56px 0 20px;">Minhas Metas</h2>
+            <h2 class="section-heading">Minhas metas</h2>
 
             <div class="toggle-row">
                 <button type="button" id="subtab-ativas-btn" onclick="switchMetasSubtab('ativas')" class="btn-small btn-primary">🎯 Ativas</button>
@@ -152,25 +174,27 @@
             </div>
 
             <div id="subtab-ativas">
-                <div class="add-goal-form">
-                    <input id="new-goal-input" type="text" placeholder="Ex: Beber água, 100 flexões, Correr">
-                    <div style="display:flex; gap:8px;">
-                        <input id="new-goal-target" type="number" min="1" placeholder="Quantidade" inputmode="decimal">
-                        <select id="new-goal-unit">
+                <div class="card add-goal-form">
+                    <p class="card-title">Nova meta</p>
+                    <input id="new-goal-input" type="text" placeholder="Ex: Beber água, 100 flexões, correr" aria-label="Descrição da meta" maxlength="80">
+                    <div class="linha-2">
+                        <input id="new-goal-target" type="number" min="1" placeholder="Quantidade" inputmode="decimal" aria-label="Quantidade alvo">
+                        <select id="new-goal-unit" aria-label="Unidade">
                             <option value="ml">ml (água)</option>
-                            <option value="reps">reps (flexões)</option>
+                            <option value="reps">repetições</option>
                             <option value="km">km (corrida)</option>
                             <option value="qty">unidade</option>
                             <option value="sono">horas (sono)</option>
                         </select>
                     </div>
+                    <label class="prompt-label" for="new-goal-deadline">Prazo (opcional)</label>
                     <input id="new-goal-deadline" type="date">
-                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                    <div class="toggle-line">
                         <label class="toggle-switch">
                             <input type="checkbox" id="new-goal-daily">
                             <span class="toggle-slider"></span>
                         </label>
-                        <span style="font-size:13px; color:var(--text-muted);">Meta diária (reseta todo dia)</span>
+                        <span>Meta diária (recomeça todo dia)</span>
                     </div>
                     <button type="button" onclick="addGoal()" class="btn-primary">Adicionar meta</button>
                 </div>
@@ -184,8 +208,9 @@
 
         <!-- LOJINHA -->
         <section id="tab-lojinha" class="tab-content">
-            <h2 class="text-center" style="margin: 56px 0 6px;">Lojinha de Recompensas</h2>
-            <p class="text-center" style="color:var(--text-muted); font-size:13px; margin-bottom:20px;">Cumpra metas e ganhe recompensas!</p>
+            <h2 class="section-heading">Lojinha de recompensas</h2>
+            <p class="section-sub">Cumpra metas, ganhe XP e troque por algo que você quer.</p>
+            <div class="card saldo-card"><span class="stat-label">Seu saldo</span><strong id="saldo-xp">0 XP pra gastar</strong></div>
             <button type="button" onclick="showAddReward()" class="btn-primary">+ Criar recompensa</button>
             <div id="rewards-list"></div>
         </section>
@@ -193,12 +218,12 @@
         <!-- PERFIL -->
         <section id="tab-perfil" class="tab-content">
             <div class="profile-pic-container">
-                <img id="profile-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%2333D17A'/%3E%3C/svg%3E" alt="Foto de perfil">
-                <label for="upload-pic" class="upload-pic-label">📷</label>
+                <img id="profile-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%2322c55e'/%3E%3C/svg%3E" alt="Foto de perfil">
+                <label for="upload-pic" class="upload-pic-label" title="Trocar foto">📷</label>
                 <input type="file" id="upload-pic" accept="image/*" onchange="salvarFoto(event)" style="display:none;">
             </div>
 
-            <div class="profile-info">
+            <div class="card profile-info">
                 <div class="info-row"><span class="info-label">Peso inicial</span><span class="info-value" id="profile-weight-initial">--</span></div>
                 <div class="info-row"><span class="info-label">Peso atual</span><span class="info-value" id="profile-weight-current">--</span></div>
                 <div class="info-row"><span class="info-label">Nível</span><span class="info-value" id="profile-level">--</span></div>
@@ -207,52 +232,80 @@
                 <div class="info-row"><span class="info-label">Objetivo</span><span class="info-value" id="profile-objetivo">--</span></div>
             </div>
 
-            <div class="measure-card">
-                <p>Atualizar medidas</p>
-                <div class="measure-row">
-                    <input id="profile-new-weight" type="number" step="0.1" placeholder="Peso (kg)" inputmode="decimal">
-                    <input id="profile-new-height" type="text" inputmode="decimal" placeholder="Altura (ex: 1.80)">
+            <div class="card measure-card">
+                <p class="card-title">Atualizar medidas</p>
+                <div class="linha-2">
+                    <input id="profile-new-weight" type="number" step="0.1" placeholder="Peso (kg)" inputmode="decimal" aria-label="Peso em kg">
+                    <input id="profile-new-height" type="text" inputmode="decimal" placeholder="Altura (ex: 1.80)" aria-label="Altura em metros">
                 </div>
-                <button type="button" class="btn-small" style="width:100%;" onclick="addMeasurements()">💾 Salvar e calcular IMC</button>
+                <button type="button" class="btn-primary" onclick="addMeasurements()">Salvar e calcular IMC</button>
             </div>
 
-            <div class="chart-card">
-                <canvas id="weight-chart" height="160"></canvas>
-                <p class="chart-caption">O IMC no gráfico é calculado com sua altura atual, aplicada a todo o histórico.</p>
+            <div class="card chart-card">
+                <canvas id="weight-chart" height="160" aria-label="Gráfico de peso e IMC"></canvas>
+                <p class="chart-caption">O IMC do gráfico usa sua altura atual em todo o histórico.</p>
             </div>
 
-            <div id="imc-container">
-                <h4>📊 IMC</h4>
+            <div class="card" id="imc-container">
+                <p class="card-title">📊 IMC</p>
                 <div class="imc-top">
                     <span id="imc-value">--</span>
                     <span id="imc-label">--</span>
                 </div>
-                <div id="imc-bar-container">
-                    <div id="imc-marker"></div>
-                </div>
+                <div id="imc-bar-container"><div id="imc-marker"></div></div>
                 <div class="imc-scale-labels"><span>Abaixo</span><span>Normal</span><span>Sobrepeso</span><span>Obeso</span></div>
             </div>
 
-            <div class="badges-card">
-                <h4>🏅 Conquistas de sequência</h4>
+            <div class="card badges-card">
+                <p class="card-title">🏅 Conquistas de sequência</p>
                 <div id="badges-list"></div>
             </div>
 
-            <div class="reminders-card">
-                <h4>🔔 Lembretes</h4>
+            <div class="card reminders-card">
+                <p class="card-title">🔔 Lembretes</p>
                 <div class="reminder-row">
-                    <span>Lembrete de água</span>
+                    <span>Beber água (a cada 2h, das 8h às 22h)</span>
                     <label class="toggle-switch">
                         <input type="checkbox" id="toggle-water-reminder" onchange="toggleReminder('water', this.checked)">
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
                 <div class="reminder-row">
-                    <span>Lembrete de meta diária (20h)</span>
+                    <span>Metas do dia (20h, ou meio-dia se você treina cedo)</span>
                     <label class="toggle-switch">
                         <input type="checkbox" id="toggle-goal-reminder" onchange="toggleReminder('goal', this.checked)">
                         <span class="toggle-slider"></span>
                     </label>
+                </div>
+            </div>
+
+            <div class="card">
+                <p class="card-title">🎨 Aparência</p>
+                <select id="tema-select" onchange="definirTema(this.value)" aria-label="Tema">
+                    <option value="sistema">Igual ao celular/computador</option>
+                    <option value="claro">Claro</option>
+                    <option value="escuro">Escuro</option>
+                    <option value="auto">Automático (escuro das 19h às 6h)</option>
+                </select>
+            </div>
+
+            <div class="card">
+                <p class="card-title">🤝 Compartilhar progresso</p>
+                <div class="reminder-row">
+                    <span>Link só leitura pra personal ou amigo (sem peso nem foto)</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-perfil-publico" onchange="alternarPerfilPublico(this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="link-publico" class="link-publico" hidden></div>
+            </div>
+
+            <div class="card">
+                <p class="card-title">📦 Seus dados</p>
+                <div class="linha-2">
+                    <button type="button" onclick="exportarPesosCsv()" class="btn-secondary">Peso e IMC (CSV)</button>
+                    <button type="button" onclick="exportarDadosJson()" class="btn-secondary">Tudo (JSON)</button>
                 </div>
             </div>
 
@@ -263,67 +316,74 @@
             </div>
         </section>
 
-        <!-- NAVEGAÇÃO INFERIOR -->
-        <nav class="bottom-nav">
-            <button type="button" onclick="switchTab('inicio')" data-tab="inicio">🏠<span>Início</span></button>
+        <nav class="bottom-nav" aria-label="Navegação">
+            <button type="button" onclick="switchTab('inicio')" data-tab="inicio" class="nav-active">🏠<span>Início</span></button>
             <button type="button" onclick="switchTab('metas')" data-tab="metas">🎯<span>Metas</span></button>
-            <button type="button" onclick="switchTab('lojinha')" data-tab="lojinha">🛒<span>Lojinha</span></button>
+            <button type="button" onclick="switchTab('lojinha')" data-tab="lojinha">🎁<span>Lojinha</span></button>
             <button type="button" onclick="switchTab('perfil')" data-tab="perfil">👤<span>Perfil</span></button>
         </nav>
     </div>
 
-    <!-- MODAL: Adicionar recompensa -->
+    <!-- PERFIL PÚBLICO (?perfil=uid) -->
+    <div id="public-screen" class="screen">
+        <div class="public-wrap" id="public-content"><p class="empty-state-hint">Carregando...</p></div>
+    </div>
+
+    <!-- MODAL: recompensa -->
     <div id="modal-add-reward" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" role="dialog" aria-label="Criar recompensa">
             <span class="close-modal" onclick="closeModal('modal-add-reward')">&times;</span>
             <h3>Criar recompensa</h3>
-            <input type="text" id="reward-title" placeholder="O que você vai ganhar? (ex: jogo novo)">
-            <input type="text" id="reward-goal" placeholder="O que você vai fazer pra ganhar? (ex: 5 dias seguidos)">
+            <input type="text" id="reward-title" placeholder="O que você ganha? (ex: jogo novo)" maxlength="80">
+            <input type="text" id="reward-goal" placeholder="O que precisa fazer? (ex: 5 dias seguidos)" maxlength="120">
+            <input type="number" id="reward-cost" min="0" placeholder="Custo em XP (opcional, ex: 300)" inputmode="numeric">
             <button type="button" onclick="createReward()" class="btn-primary">Criar</button>
         </div>
     </div>
 
-    <!-- MODAL: Editar perfil -->
+    <!-- MODAL: editar perfil -->
     <div id="modal-edit-profile" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" role="dialog" aria-label="Editar perfil">
             <span class="close-modal" onclick="closeModal('modal-edit-profile')">&times;</span>
             <h3>Editar perfil</h3>
-            <label class="prompt-label">Como devemos te chamar?</label>
-            <input type="text" id="edit-displayname" placeholder="Seu nome de exibição">
-            <label class="prompt-label">Frase de motivação</label>
-            <input type="text" id="edit-phrase" placeholder="Sua frase de motivação">
+            <label class="prompt-label" for="edit-displayname">Como quer ser chamado?</label>
+            <input type="text" id="edit-displayname" placeholder="Seu nome" maxlength="40">
+            <label class="prompt-label" for="edit-phrase">Frase de motivação</label>
+            <input type="text" id="edit-phrase" placeholder="Sua frase" maxlength="120">
             <button type="button" onclick="saveProfileChanges()" class="btn-primary">Salvar</button>
         </div>
     </div>
 
-    <!-- MODAL: Adicionar progresso -->
+    <!-- MODAL: progresso -->
     <div id="modal-add-progress" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" role="dialog" aria-labelledby="modal-goal-title">
             <span class="close-modal" onclick="closeModal('modal-add-progress')">&times;</span>
             <h3 id="modal-goal-title">Adicionar progresso</h3>
-            <div id="modal-quick-buttons" style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;"></div>
-            <input type="number" step="any" id="modal-progress-input" placeholder="Quantidade" inputmode="decimal">
+            <div id="modal-quick-buttons" class="quick-buttons"></div>
+            <input type="number" step="any" id="modal-progress-input" placeholder="Quantidade" inputmode="decimal" onkeydown="if(event.key==='Enter')saveProgress()">
             <button type="button" onclick="saveProgress()" class="btn-primary">Adicionar</button>
         </div>
     </div>
 
-    <!-- MODAL: Resumo semanal (card exportável) -->
+    <!-- MODAL: resumo semanal -->
     <div id="modal-weekly-recap" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" role="dialog" aria-label="Resumo da semana">
             <span class="close-modal" onclick="closeModal('modal-weekly-recap')">&times;</span>
             <div id="weekly-recap-card" class="recap-card">
                 <div class="recap-card-brand">💪 Corpo Bem</div>
-                <div class="recap-card-title">Resumo da semana</div>
+                <div class="recap-card-title">Minha semana</div>
                 <div class="recap-stats">
-                    <div class="recap-stat"><span class="recap-stat-value" id="recap-water">0 L</span><span class="recap-stat-label">Água bebida</span></div>
+                    <div class="recap-stat"><span class="recap-stat-value" id="recap-water">0 L</span><span class="recap-stat-label">Água</span></div>
                     <div class="recap-stat"><span class="recap-stat-value" id="recap-km">0 km</span><span class="recap-stat-label">Distância</span></div>
                     <div class="recap-stat"><span class="recap-stat-value" id="recap-reps">0</span><span class="recap-stat-label">Repetições</span></div>
-                    <div class="recap-stat"><span class="recap-stat-value" id="recap-percent">0%</span><span class="recap-stat-label">Metas cumpridas</span></div>
+                    <div class="recap-stat"><span class="recap-stat-value" id="recap-percent">0</span><span class="recap-stat-label">Metas cumpridas</span></div>
                 </div>
-                <div class="recap-stat" style="margin-top:12px;"><span class="recap-stat-value" id="recap-streak">0 dias</span><span class="recap-stat-label">Sequência atual 🔥</span></div>
+                <div class="recap-stat recap-streak"><span class="recap-stat-value" id="recap-streak">0 dias</span><span class="recap-stat-label">Sequência 🔥</span></div>
             </div>
-            <button type="button" onclick="exportRecapCard()" class="btn-primary">⬇️ Baixar imagem</button>
-            <button type="button" onclick="closeModal('modal-weekly-recap')" class="btn-secondary">Fechar</button>
+            <div class="linha-2">
+                <button type="button" onclick="compartilharResumo()" class="btn-primary">📤 Compartilhar</button>
+                <button type="button" onclick="exportRecapCard()" class="btn-secondary">⬇️ Baixar</button>
+            </div>
         </div>
     </div>
 

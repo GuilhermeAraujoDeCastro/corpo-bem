@@ -1,16 +1,16 @@
 {
   "name": "Corpo Bem",
   "short_name": "Corpo Bem",
-  "description": "Treino, metas e foco, direto do seu bolso.",
+  "description": "Treino, água, sono e peso num app simples, com metas diárias e sequência.",
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0A0D12",
-  "theme_color": "#0A0D12",
+  "background_color": "#0b0f14",
+  "theme_color": "#0b0f14",
   "orientation": "portrait",
   "icons": [
-    { "src": "assets/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
-    { "src": "assets/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "assets/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "assets/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
     {

@@ -1,6 +1,13 @@
-// Elementos de interface compartilhados: troca de telas/abas, modais,
-// toast e confirmação. Isso substitui os alert()/confirm()/prompt()
-// nativos do navegador, que quebravam a identidade visual do app.
+// Interface compartilhada: telas, abas, modais, toast, confirmação e tema.
+// Substitui alert()/confirm()/prompt() do navegador, que fugiam do visual do app.
+import { temaPorHorario } from './calculos.js';
+
+function escapeHtmlPrompt(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+}
+
 export function showLogin() {
     document.getElementById('login-screen').classList.add('active');
     document.getElementById('signup-screen').classList.remove('active');
@@ -61,11 +68,40 @@ document.addEventListener('click', (e) => {
     }
 });
 
-export function toggleDarkMode() {
-    document.documentElement.classList.toggle('light-mode');
-    const isLight = document.documentElement.classList.contains('light-mode');
-    try { localStorage.setItem('darkMode', isLight ? 'true' : 'false'); } catch (e) {}
+// ===== TEMA: sistema, claro, escuro ou automático (escuro das 19h às 6h) =====
+// Quem usava a versão antiga tinha 'darkMode' ('true' = claro, 'false' = escuro): a escolha é mantida.
+export function modoTema() {
+    try {
+        const antigo = localStorage.getItem('darkMode');
+        return localStorage.getItem('corpo-tema') || (antigo === 'true' ? 'claro' : antigo === 'false' ? 'escuro' : 'sistema');
+    } catch (e) { return 'sistema'; }
 }
+
+export function aplicarTema(modo = modoTema()) {
+    const escuro = modo === 'escuro' || (modo === 'auto' && temaPorHorario(new Date().getHours()) === 'dark')
+        || (modo === 'sistema' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = escuro ? 'dark' : 'light';
+    const seletor = document.getElementById('tema-select');
+    if (seletor) seletor.value = modo;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = escuro ? '#0b0f14' : '#f4f7f5';
+    document.dispatchEvent(new Event('temamudou'));
+}
+
+export function definirTema(modo) {
+    try { localStorage.setItem('corpo-tema', modo); } catch (e) {}
+    aplicarTema(modo);
+}
+
+// Botão do topo: alterna direto entre claro e escuro.
+export function toggleDarkMode() {
+    definirTema(document.documentElement.dataset.theme === 'dark' ? 'claro' : 'escuro');
+}
+
+// No modo automático, confere de novo a cada 10 min (vira escuro sozinho às 19h).
+setInterval(() => { if (modoTema() === 'auto') aplicarTema('auto'); }, 10 * 60 * 1000);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (modoTema() === 'sistema') aplicarTema('sistema'); });
+window.definirTema = definirTema;
 
 // ===== TOAST (substitui alert()) =====
 let toastTimeout = null;
@@ -89,10 +125,10 @@ export function showConfirm(message, confirmLabel = 'Confirmar') {
         overlay.className = 'confirm-overlay';
         overlay.innerHTML = `
             <div class="confirm-box">
-                <p>${message}</p>
+                <p>${escapeHtmlPrompt(message)}</p>
                 <div class="confirm-actions">
                     <button type="button" class="btn-secondary confirm-cancel">Cancelar</button>
-                    <button type="button" class="btn-primary confirm-ok">${confirmLabel}</button>
+                    <button type="button" class="btn-primary confirm-ok">${escapeHtmlPrompt(confirmLabel)}</button>
                 </div>
             </div>
         `;
@@ -106,12 +142,6 @@ export function showConfirm(message, confirmLabel = 'Confirmar') {
 }
 
 // ===== PROMPT (substitui prompt()), usado em "editar meta" e "recuperar senha" =====
-function escapeHtmlPrompt(str) {
-    const div = document.createElement('div');
-    div.textContent = str == null ? '' : String(str);
-    return div.innerHTML;
-}
-
 export function showPrompt({ title, fields }) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
@@ -167,7 +197,7 @@ export function celebrate() {
             particleCount: 150,
             spread: 70,
             origin: { y: 0.6 },
-            colors: ['#33D17A', '#FF8A3D', '#ffffff']
+            colors: ['#c6f24e', '#ff7a45', '#5cc8ff', '#ffffff']
         });
     }
 }
