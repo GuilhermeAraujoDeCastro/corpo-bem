@@ -1,5 +1,4 @@
-// Resumo semanal: estatísticas dos últimos 7 dias, com um card exportável
-// como imagem, pra aproveitar o momento de conquista e divulgar o app.
+// Resumo dos últimos 7 dias: card que vira imagem pra baixar ou compartilhar.
 import { db, collection, getDocs } from './firebase-config.js';
 import { state, getLocalDateStr } from './state.js';
 import { showToast } from './ui.js';
@@ -16,21 +15,21 @@ export async function generateWeeklyRecap() {
         snap.forEach(s => logs.push(s.data()));
         const recent = logs.filter(l => l.date >= since);
 
-        let waterTotal = 0, kmTotal = 0, repsTotal = 0, completedCount = 0;
+        let waterTotal = 0, kmTotal = 0, repsTotal = 0;
+        const cumpridas = new Set(); // meta + dia (bater a mesma meta diária 7 vezes conta 7)
         recent.forEach(r => {
             if (r.unit === 'ml') waterTotal += (r.amount || 0);
             else if (r.unit === 'km') kmTotal += (r.amount || 0);
             else if (r.unit === 'reps') repsTotal += (r.amount || 0);
-            if (r.completed) completedCount += 1;
+            if (r.completed) cumpridas.add(`${r.goalId}|${r.date}`);
         });
-        const totalLogs = recent.length || 1;
-        const percentCompleted = Math.round((completedCount / totalLogs) * 100);
 
         setText('recap-water', `${(waterTotal / 1000).toFixed(2)} L`);
         setText('recap-km', `${kmTotal.toFixed(2)} km`);
         setText('recap-reps', `${repsTotal}`);
-        setText('recap-percent', `${percentCompleted}%`);
-        setText('recap-streak', `${state.userData.sequencia || 0} dias`);
+        setText('recap-percent', `${cumpridas.size}`);
+        const seq = state.userData.sequencia || 0;
+        setText('recap-streak', `${seq} ${seq === 1 ? 'dia' : 'dias'}`);
 
         document.getElementById('modal-weekly-recap').style.display = 'block';
     } catch (e) { console.error(e); showToast('Não consegui montar seu resumo agora.', 'error'); }
@@ -42,9 +41,40 @@ function setText(id, value) {
     if (el) el.innerText = value;
 }
 
+// Abre sozinho só uma vez no domingo (antes abria a cada vez que o app carregava).
 export function tryShowWeeklyRecapAuto() {
-    if (new Date().getDay() === 0) generateWeeklyRecap();
+    if (new Date().getDay() !== 0) return;
+    const hoje = getLocalDateStr();
+    try {
+        if (localStorage.getItem('corpo-resumo-visto') === hoje) return;
+        localStorage.setItem('corpo-resumo-visto', hoje);
+    } catch (e) { /* sem localStorage: abre mesmo assim */ }
+    generateWeeklyRecap();
 }
+
+async function gerarImagemResumo() {
+    const cardEl = document.getElementById('weekly-recap-card');
+    if (!cardEl || typeof window.html2canvas !== 'function') throw new Error('html2canvas indisponível');
+    return window.html2canvas(cardEl, { backgroundColor: null, scale: 2 });
+}
+
+// Compartilha a imagem direto (WhatsApp, Instagram...) quando o aparelho deixa; senão baixa.
+window.compartilharResumo = async function () {
+    try {
+        const canvas = await gerarImagemResumo();
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const arquivo = new File([blob], 'corpo-bem-resumo-semanal.png', { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+            await navigator.share({ files: [arquivo], title: 'Minha semana no Corpo Bem', text: 'Olha minha semana de treino 💪' });
+            return;
+        }
+        await exportRecapCard();
+    } catch (e) {
+        if (e && e.name === 'AbortError') return; // pessoa fechou a janela de compartilhar
+        console.error(e);
+        showToast('Não consegui compartilhar agora.', 'error');
+    }
+};
 
 export async function exportRecapCard() {
     const cardEl = document.getElementById('weekly-recap-card');

@@ -1,18 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Cada usuário só pode ler/escrever os próprios dados: o documento
-    // users/{userId} e tudo dentro dele (goals, rewards, weights,
-    // progressLogs, completedGoals). Sem isso publicado no console, TODA
-    // leitura/escrita no Firestore falha com "Missing or insufficient
-    // permissions" depois do login — foi exatamente esse o motivo do app
-    // parecer quebrado. Veja o README para o passo a passo de publicação.
+    // Cada conta só lê e grava os próprios dados: users/{uid} e tudo dentro
+    // (goals, rewards, weights, progressLogs, completedGoals).
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
       match /{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+    }
+
+    // Resumo público (perfil compartilhado com personal/amigo): qualquer um lê,
+    // só o dono grava, e só com os campos do resumo (sem peso nem foto).
+    match /publico/{userId} {
+      allow get: if true;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['nome', 'sequencia', 'nivel', 'xp', 'diasAtivos', 'metas', 'atualizadoEm'])
+        && request.resource.data.nome is string && request.resource.data.nome.size() <= 60
+        && request.resource.data.sequencia is int && request.resource.data.nivel is int && request.resource.data.xp is int
+        && request.resource.data.atualizadoEm is string && request.resource.data.atualizadoEm.size() == 10
+        && request.resource.data.metas is list && request.resource.data.metas.size() <= 50
+        && request.resource.data.diasAtivos is list && request.resource.data.diasAtivos.size() <= 120;
     }
   }
 }

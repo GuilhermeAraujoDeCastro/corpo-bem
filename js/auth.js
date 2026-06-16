@@ -18,6 +18,7 @@ import {
 } from './firebase-config.js';
 import { state, getLocalDateStr, isValidHeight, formatHeight } from './state.js';
 import { showLogin, showSignup, showOnboardingScreen, showApp, showToast, showPrompt } from './ui.js';
+import { metasSugeridas, usuarioValido, formatarNumero } from './calculos.js';
 
 let onAuthenticatedApp = async () => {};
 let tempOnboardingData = {};
@@ -112,6 +113,11 @@ window.goSignup = async function () {
         showToast('A senha precisa ter pelo menos 6 caracteres.', 'error');
         return;
     }
+    // O usuário vira um e-mail interno: espaço ou acento geravam erro sem explicação.
+    if (!usuarioValido(username)) {
+        showToast('Usuário: 3 a 20 caracteres, só letras sem acento, números, ponto, _ ou -.', 'error');
+        return;
+    }
 
     // Mesmo motivo do login: sempre minusculas, pra combinar com o que
     // o Firebase ja faz internamente e evitar contas "quase iguais".
@@ -180,7 +186,20 @@ window.goForgotPassword = async function () {
 window.showOnboardingStep = function (step) {
     document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
     document.getElementById(`step-${step}`).style.display = 'block';
+    if (step === 'phrase') renderMetasSugeridas();
 };
+
+// Última etapa: metas prontas pro objetivo escolhido, pra primeira tela não ficar vazia.
+function renderMetasSugeridas() {
+    const caixa = document.getElementById('onboard-sugestoes');
+    if (!caixa) return;
+    const unidade = { ml: 'ml', km: 'km', reps: 'repetições', sono: 'horas' };
+    caixa.innerHTML = metasSugeridas(tempOnboardingData.objetivo).map((m, i) => `
+        <label class="sugestao-item">
+            <input type="checkbox" data-sugestao="${i}" checked>
+            <span>${m.text} · ${formatarNumero(m.target)} ${unidade[m.unit] || ''} por dia</span>
+        </label>`).join('');
+}
 
 window.nextOnboardingStep = function (from) {
     if (from === 'weight') {
@@ -232,7 +251,10 @@ window.finishOnboarding = async function () {
     try {
         await setDoc(doc(db, 'users', uid), tempOnboardingData, { merge: true });
         await addDoc(collection(db, 'users', uid, 'weights'), { date: getLocalDateStr(), weight: tempOnboardingData.kgInicial });
-        state.userData = tempOnboardingData;
+        const sugestoes = metasSugeridas(tempOnboardingData.objetivo);
+        const marcadas = [...document.querySelectorAll('[data-sugestao]:checked')].map(el => sugestoes[Number(el.dataset.sugestao)]);
+        await Promise.all(marcadas.map(m => addDoc(collection(db, 'users', uid, 'goals'), { ...m, current: 0, createdAt: Date.now() })));
+        state.userData = { ...state.userData, ...tempOnboardingData }; // mantém usuário e nome salvos no cadastro
         showApp();
         await onAuthenticatedApp();
     } catch (e) {
@@ -264,5 +286,5 @@ function friendlyAuthError(err) {
         'auth/popup-closed-by-user': 'Login com Google cancelado.',
         'auth/unauthorized-domain': 'Este domínio não está autorizado no Firebase Authentication.'
     };
-    return map[code] || ('Erro: ' + (err && err.message ? err.message : 'tente novamente.'));
+    return map[code] || 'Não deu certo agora. Tente de novo.';
 }

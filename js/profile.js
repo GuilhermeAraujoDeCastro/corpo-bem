@@ -1,6 +1,7 @@
-// Perfil: dados pessoais, peso/altura, IMC, gráfico de evolução (peso + IMC
-// na mesma linha do tempo), sequência com "congelador" semanal e badges.
-import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, updateProfile } from './firebase-config.js';
+// Perfil: peso/altura, IMC, gráfico, sequência (com congelador semanal), conquistas,
+// calendário de dias ativos, hidratação, exportações e perfil público só leitura.
+import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, deleteDoc, updateProfile } from './firebase-config.js';
+import { csvPesos, formatarNumero, gradeSequencia, saldoXp } from './calculos.js';
 import { state, getLocalDateStr, isValidHeight } from './state.js';
 import { showToast } from './ui.js';
 
@@ -65,6 +66,7 @@ export function renderProfileSummary() {
 
     setText('profile-level', level);
     setText('profile-xp', `${xp} XP`);
+    setText('saldo-xp', `${saldoXp(xp, state.userData.xpGasto)} XP pra gastar`); // lojinha acompanha o XP ganho
 
     const homeXpBar = document.getElementById('home-xp-bar');
     const homeXpLabel = document.getElementById('home-xp-label');
@@ -207,25 +209,36 @@ export async function loadWeightHistory() {
     } catch (e) { console.error(e); }
 }
 
+let ultimoGrafico = null;
+
+// Cores vêm das variáveis do tema, então o gráfico é redesenhado quando o tema muda.
 function renderWeightChart(labels, weights) {
+    ultimoGrafico = { labels, weights };
     const ctx = document.getElementById('weight-chart');
     if (!ctx || typeof window.Chart === 'undefined') return;
     const altura = parseFloat(state.userData.alturaAtual || state.userData.alturaInicial) || null;
     const imcData = altura ? weights.map(w => +(w / (altura * altura)).toFixed(1)) : null;
+    const corPeso = getCssVar('--accent');
+    const corImc = getCssVar('--fire');
+    const corTexto = getCssVar('--text-muted');
+    const corGrade = getCssVar('--border');
 
     if (window._weightChart) window._weightChart.destroy();
     const datasets = [{
-        label: 'Peso (kg)', data: weights, borderColor: '#33D17A',
-        backgroundColor: 'rgba(51,209,122,0.08)', tension: 0.3, yAxisID: 'y'
+        label: 'Peso (kg)', data: weights, borderColor: corPeso,
+        backgroundColor: 'transparent', tension: 0.3, yAxisID: 'y'
     }];
     if (imcData) {
         datasets.push({
-            label: 'IMC (com a altura atual)', data: imcData, borderColor: '#FF8A3D',
+            label: 'IMC (com a altura atual)', data: imcData, borderColor: corImc,
             backgroundColor: 'transparent', borderDash: [5, 4], tension: 0.3, yAxisID: 'y1'
         });
     }
-    const scales = { y: { beginAtZero: false, position: 'left', ticks: { color: '#33D17A' } } };
-    if (imcData) scales.y1 = { beginAtZero: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#FF8A3D' } };
+    const scales = {
+        x: { ticks: { color: corTexto }, grid: { color: corGrade } },
+        y: { beginAtZero: false, position: 'left', ticks: { color: corPeso }, grid: { color: corGrade } },
+    };
+    if (imcData) scales.y1 = { beginAtZero: false, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: corImc } };
 
     window._weightChart = new window.Chart(ctx, {
         type: 'line',
@@ -233,6 +246,8 @@ function renderWeightChart(labels, weights) {
         options: { responsive: true, plugins: { legend: { labels: { color: getCssVar('--text-color') } } }, scales }
     });
 }
+
+document.addEventListener('temamudou', () => { if (ultimoGrafico) renderWeightChart(ultimoGrafico.labels, ultimoGrafico.weights); });
 
 // ===== SEQUÊNCIA (com congelador de 1 dia por semana) =====
 export async function updateStreak() {
@@ -291,7 +306,9 @@ function checkStreakBadges() {
 }
 
 function renderStreakDisplay() {
-    setText('streak-count', state.userData.sequencia || 0);
+    const dias = state.userData.sequencia || 0;
+    setText('streak-count', dias);
+    setText('streak-unidade', dias === 1 ? 'dia' : 'dias');
 }
 
 window.showEditProfile = function () {
@@ -332,3 +349,175 @@ window.saveProfileChanges = async function () {
         }
     } catch (e) { console.error(e); showToast('Erro ao salvar alterações.', 'error'); }
 };
+
+// ===== CALENDÁRIO DE SEQUÊNCIA (estilo contribuições do GitHub) =====
+export async function carregarDiasAtivos() {
+    if (!state.currentUser) return;
+    try {
+        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'progressLogs'));
+        const dias = new Set();
+        snap.forEach(s => { if (s.data().date) dias.add(s.data().date); });
+        state.diasAtivos = [...dias];
+    } catch (e) { console.error(e); state.diasAtivos = []; }
+    renderSequenciaCalendario();
+}
+
+export function renderSequenciaCalendario(alvoId = 'sequencia-calendario', dias = state.diasAtivos) {
+    const caixa = document.getElementById(alvoId);
+    if (!caixa) return;
+    const grade = gradeSequencia(dias || []);
+    const total = grade.flat().filter(d => d.ativo).length;
+    caixa.innerHTML = `
+        <div class="calendario-grade" role="img" aria-label="${total} dias com registro nas últimas 12 semanas">
+            ${grade.map(semana => `<div class="calendario-semana">${semana.map(d =>
+                `<span class="calendario-dia ${d.ativo ? 'ativo' : ''} ${d.futuro ? 'futuro' : ''}" title="${d.data}"></span>`).join('')}</div>`).join('')}
+        </div>
+        <p class="calendario-legenda">${total} dia${total === 1 ? '' : 's'} com registro nas últimas 12 semanas</p>`;
+}
+
+// ===== HIDRATAÇÃO (atalho na tela inicial pra meta diária de água) =====
+export function renderHidratacao() {
+    const caixa = document.getElementById('hidratacao-card');
+    if (!caixa) return;
+    const agua = (state.goals || []).find(g => g.unit === 'ml' && g.isDaily);
+    if (!agua) {
+        caixa.innerHTML = `<p class="card-title">💧 Água</p><p class="empty-state-hint">Crie uma meta diária em ml pra acompanhar a hidratação aqui.</p>`;
+        return;
+    }
+    const pct = Math.min(100, Math.round((agua.current / agua.target) * 100));
+    caixa.innerHTML = `
+        <div class="hidratacao-topo"><p class="card-title">💧 Água hoje</p><span>${formatarNumero(agua.current)} / ${formatarNumero(agua.target)} ml</span></div>
+        <div class="progress-bar"><div class="fill fill-agua" style="width:${pct}%"></div></div>
+        <div class="hidratacao-botoes">
+            ${[250, 500].map(ml => `<button type="button" class="btn-small" onclick="adicionarAguaRapido(${ml})" ${pct >= 100 ? 'disabled' : ''}>+${ml} ml</button>`).join('')}
+        </div>`;
+}
+
+window.adicionarAguaRapido = async function (ml) {
+    const agua = (state.goals || []).find(g => g.unit === 'ml' && g.isDaily);
+    if (!agua) return;
+    const { registrarProgresso } = await import('./goals.js');
+    await registrarProgresso(agua, ml);
+};
+
+// ===== EXPORTAÇÕES =====
+function baixarArquivo(conteudo, nome, tipo) {
+    const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = nome;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function lerColecao(nome) {
+    const snap = await getDocs(collection(db, 'users', state.currentUser.uid, nome));
+    const itens = [];
+    snap.forEach(s => itens.push({ id: s.id, ...s.data() }));
+    return itens;
+}
+
+window.exportarPesosCsv = async function () {
+    if (!state.currentUser) return;
+    try {
+        const pesos = await lerColecao('weights');
+        if (!pesos.length) { showToast('Ainda não tem peso registrado.', 'info'); return; }
+        const altura = state.userData.alturaAtual || state.userData.alturaInicial;
+        // BOM no começo faz o Excel reconhecer os acentos.
+        baixarArquivo(String.fromCharCode(0xFEFF) + csvPesos(pesos, altura), 'corpo-bem-peso-imc.csv', 'text/csv;charset=utf-8');
+    } catch (e) { console.error(e); showToast('Não consegui exportar agora.', 'error'); }
+};
+
+// Tudo da conta num JSON, pra levar o histórico pra outro app se quiser.
+window.exportarDadosJson = async function () {
+    if (!state.currentUser) return;
+    try {
+        const [goals, completedGoals, progressLogs, rewards, weights] = await Promise.all(
+            ['goals', 'completedGoals', 'progressLogs', 'rewards', 'weights'].map(lerColecao));
+        const { pushSubscription, ...perfil } = state.userData;
+        const dados = { exportadoEm: new Date().toISOString(), perfil, goals, completedGoals, progressLogs, rewards, weights };
+        baixarArquivo(JSON.stringify(dados, null, 2), 'corpo-bem-meus-dados.json', 'application/json');
+    } catch (e) { console.error(e); showToast('Não consegui exportar agora.', 'error'); }
+};
+
+// ===== PERFIL PÚBLICO (só leitura, pra personal ou amigo acompanhar) =====
+// Grava um resumo em publico/{uid}; peso e foto nunca vão pra lá.
+export async function atualizarPerfilPublico() {
+    if (!state.currentUser || !state.userData.perfilPublico) return;
+    const metas = (state.goals || []).map(g => ({ text: g.text, current: g.current, target: g.target, unit: g.unit, isDaily: !!g.isDaily }));
+    try {
+        await setDoc(doc(db, 'publico', state.currentUser.uid), {
+            nome: String(state.userData.displayname || state.currentUser.displayName || 'Atleta').slice(0, 60), // limite das regras
+            sequencia: state.userData.sequencia || 0,
+            nivel: state.userData.level || 1,
+            xp: state.userData.xp || 0,
+            diasAtivos: (state.diasAtivos || []).slice(-120),
+            metas,
+            atualizadoEm: getLocalDateStr(),
+        });
+    } catch (e) { console.error('Erro ao atualizar perfil público:', e); }
+}
+
+window.alternarPerfilPublico = async function (ligado) {
+    if (!state.currentUser) return;
+    try {
+        await setDoc(doc(db, 'users', state.currentUser.uid), { perfilPublico: ligado }, { merge: true });
+        state.userData.perfilPublico = ligado;
+        if (ligado) await atualizarPerfilPublico();
+        else await deleteDoc(doc(db, 'publico', state.currentUser.uid));
+        renderLinkPublico();
+    } catch (e) { console.error(e); showToast('Não consegui mudar o compartilhamento.', 'error'); }
+};
+
+export function renderLinkPublico() {
+    const caixa = document.getElementById('link-publico');
+    const chave = document.getElementById('toggle-perfil-publico');
+    if (chave) chave.checked = !!state.userData.perfilPublico;
+    if (!caixa) return;
+    if (!state.userData.perfilPublico || !state.currentUser) { caixa.hidden = true; return; }
+    const link = `${location.origin}${location.pathname}?perfil=${encodeURIComponent(state.currentUser.uid)}`;
+    caixa.hidden = false;
+    caixa.innerHTML = `<input type="text" readonly value="${link}" onclick="this.select()"><button type="button" class="btn-small" onclick="compartilharLink('${link}')">Compartilhar</button>`;
+}
+
+window.compartilharLink = async function (link) {
+    if (navigator.share) {
+        try { await navigator.share({ title: 'Meu progresso no Corpo Bem', url: link }); return; } catch (e) { /* cancelado */ }
+    }
+    try { await navigator.clipboard.writeText(link); showToast('Link copiado!', 'success'); } catch (e) { showToast('Copie o link na caixinha.', 'info'); }
+};
+
+function esc(texto) {
+    const div = document.createElement('div');
+    div.textContent = texto == null ? '' : String(texto);
+    return div.innerHTML;
+}
+
+// Tela pública (?perfil=uid): mostra o resumo sem precisar de login.
+export async function mostrarPerfilPublico(uid) {
+    document.querySelectorAll('.screen').forEach(t => t.classList.remove('active'));
+    document.getElementById('public-screen').classList.add('active');
+    const caixa = document.getElementById('public-content');
+    try {
+        const snap = await getDoc(doc(db, 'publico', uid));
+        if (!snap.exists()) throw new Error('não compartilhado');
+        const p = snap.data();
+        const unidade = (u) => (u === 'sono' ? 'h' : u === 'qty' ? '' : u);
+        caixa.innerHTML = `
+            <p class="public-badge">Progresso compartilhado</p>
+            <h2 class="greeting-large">${esc(p.nome)}</h2>
+            <div class="stats-row">
+                <div class="stat-card"><span class="stat-label">Sequência</span><strong>🔥 ${esc(p.sequencia)} ${p.sequencia === 1 ? 'dia' : 'dias'}</strong></div>
+                <div class="stat-card"><span class="stat-label">Nível</span><strong>⚡ ${esc(p.nivel)}</strong></div>
+            </div>
+            <div class="card"><p class="card-title">Dias ativos</p><div id="public-calendario"></div></div>
+            <div class="card"><p class="card-title">Metas</p>${(p.metas || []).map(m => {
+                const pct = Math.min(100, Math.round((m.current / m.target) * 100));
+                return `<div class="public-meta"><span>${esc(m.text)}</span><span>${formatarNumero(m.current)} / ${formatarNumero(m.target)} ${esc(unidade(m.unit))}</span></div><div class="progress-bar"><div class="fill" style="width:${pct}%"></div></div>`;
+            }).join('') || '<p class="empty-state-hint">Nenhuma meta ativa.</p>'}</div>
+            <p class="empty-state-hint">Atualizado em ${esc(p.atualizadoEm)}.</p>`;
+        renderSequenciaCalendario('public-calendario', p.diasAtivos || []);
+    } catch (e) {
+        caixa.innerHTML = '<h2>Perfil não encontrado</h2><p class="empty-state-hint">Esse link não está mais compartilhado.</p>';
+    }
+}

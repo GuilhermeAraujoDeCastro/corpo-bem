@@ -1,6 +1,7 @@
-// Lojinha de recompensas: criar, resgatar e remover recompensas pessoais.
-import { db, doc, collection, addDoc, getDocs, updateDoc, deleteDoc } from './firebase-config.js';
+// Lojinha: recompensas criadas pela própria pessoa, resgatadas com o XP das metas.
+import { db, doc, setDoc, collection, addDoc, getDocs, updateDoc, deleteDoc } from './firebase-config.js';
 import { state } from './state.js';
+import { saldoXp } from './calculos.js';
 import { showToast, showConfirm, closeModal, celebrate, showCelebrationBanner } from './ui.js';
 
 function escapeHtml(str) {
@@ -16,22 +17,30 @@ window.showAddReward = function () {
 window.createReward = async function () {
     const title = document.getElementById('reward-title').value.trim();
     const goal = document.getElementById('reward-goal').value.trim();
-    if (!title || !goal) { showToast('Preencha todos os campos.', 'error'); return; }
+    const custo = Math.max(0, parseInt(document.getElementById('reward-cost').value, 10) || 0);
+    if (!title || !goal) { showToast('Preencha o que você ganha e o que precisa fazer.', 'error'); return; }
     if (!state.currentUser) return;
 
     try {
-        await addDoc(collection(db, 'users', state.currentUser.uid, 'rewards'), { title, goal, createdAt: Date.now(), completed: false });
+        await addDoc(collection(db, 'users', state.currentUser.uid, 'rewards'), { title, goal, custoXp: custo, createdAt: Date.now(), completed: false });
         closeModal('modal-add-reward');
         document.getElementById('reward-title').value = '';
         document.getElementById('reward-goal').value = '';
+        document.getElementById('reward-cost').value = '';
         loadRewards();
     } catch (e) { console.error(e); showToast('Erro ao criar recompensa.', 'error'); }
 };
+
+export function renderSaldoXp() {
+    const el = document.getElementById('saldo-xp');
+    if (el) el.textContent = `${saldoXp(state.userData.xp, state.userData.xpGasto)} XP pra gastar`;
+}
 
 export async function loadRewards() {
     if (!state.currentUser) return;
     const list = document.getElementById('rewards-list');
     list.innerHTML = '';
+    renderSaldoXp();
     try {
         const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'rewards'));
         if (snap.empty) {
@@ -47,7 +56,7 @@ export async function loadRewards() {
                 <div class="goal-card-top">
                     <div>
                         <h4 class="${r.completed ? 'reward-done' : ''}">${escapeHtml(r.title)} ${r.completed ? '✅' : ''}</h4>
-                        <p class="goal-progress-text">Se você: ${escapeHtml(r.goal)}</p>
+                        <p class="goal-progress-text">Se você: ${escapeHtml(r.goal)}${r.custoXp ? ` · custa ${r.custoXp} XP` : ''}</p>
                     </div>
                     ${r.completed
                         ? '<button type="button" class="btn-delete reward-remove-btn">✕</button>'
@@ -55,16 +64,22 @@ export async function loadRewards() {
                 </div>
             `;
             if (r.completed) card.querySelector('.reward-remove-btn').addEventListener('click', () => deleteReward(id));
-            else card.querySelector('.reward-claim-btn').addEventListener('click', () => markRewardCompleted(id));
+            else card.querySelector('.reward-claim-btn').addEventListener('click', () => markRewardCompleted(id, r.custoXp || 0));
             list.appendChild(card);
         });
     } catch (e) { console.error(e); }
 }
 
-async function markRewardCompleted(id) {
+async function markRewardCompleted(id, custo) {
     if (!state.currentUser) return;
+    const saldo = saldoXp(state.userData.xp, state.userData.xpGasto);
+    if (custo > saldo) { showToast(`Faltam ${custo - saldo} XP. Cumpra mais metas pra liberar!`, 'info'); return; }
     try {
         await updateDoc(doc(db, 'users', state.currentUser.uid, 'rewards', id), { completed: true });
+        if (custo) {
+            state.userData.xpGasto = (state.userData.xpGasto || 0) + custo;
+            await setDoc(doc(db, 'users', state.currentUser.uid), { xpGasto: state.userData.xpGasto }, { merge: true });
+        }
         celebrate();
         showCelebrationBanner('🎁 Recompensa recolhida! Você merece!');
         loadRewards();

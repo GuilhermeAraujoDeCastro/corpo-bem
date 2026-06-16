@@ -1,8 +1,11 @@
-// Metas: CRUD, progresso, reset diário das metas "diárias" e concessão de XP.
+// Metas: criar, editar, progresso, reset das metas diárias e XP.
 import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc } from './firebase-config.js';
 import { state, getLocalDateStr } from './state.js';
 import { showToast, showConfirm, showPrompt, closeModal, showCelebrationBanner, celebrate } from './ui.js';
-import { renderProfileSummary } from './profile.js';
+import { renderProfileSummary, renderSequenciaCalendario, renderHidratacao } from './profile.js';
+import { adicionarHora, formatarNumero, horaHabitual } from './calculos.js';
+
+const UNIDADES = ['ml', 'reps', 'km', 'qty', 'sono'];
 
 function escapeHtml(str) {
     const div = document.createElement('div');
@@ -64,6 +67,8 @@ export async function loadGoals() {
             container.appendChild(createGoalCard(g));
             list.appendChild(createGoalCard(g));
         });
+        state.goals = goals;
+        renderHidratacao();
     } catch (e) {
         console.error(e);
         container.innerHTML = '<div class="empty-state"><p>Não consegui carregar suas metas agora.</p></div>';
@@ -98,7 +103,7 @@ function createGoalCard(g) {
         <div class="goal-card-top">
             <div>
                 <h4>${escapeHtml(g.text)} ${g.isDaily ? '<span class="badge-pill">Diária</span>' : ''}${deadlineHtml}</h4>
-                <p class="goal-progress-text">${g.current} ${unit} / ${g.target} ${unit}</p>
+                <p class="goal-progress-text">${formatarNumero(g.current)} ${unit} / ${formatarNumero(g.target)} ${unit}</p>
             </div>
             <div class="goal-card-actions">
                 <button type="button" class="btn-small goal-edit-btn">Editar</button>
@@ -106,9 +111,9 @@ function createGoalCard(g) {
             </div>
         </div>
         <div class="progress-container">
-            <div class="progress-bar"><div class="fill" style="width: ${percent}%; background: ${fillColor}; box-shadow: 0 0 10px ${fillColor};"></div></div>
+            <div class="progress-bar"><div class="fill" style="width: ${percent}%; background: ${fillColor};"></div></div>
+            <button type="button" class="btn-small goal-add-progress-btn" aria-label="Adicionar progresso em ${escapeHtml(g.text)}">+</button>
         </div>
-        <button type="button" class="btn-small goal-add-progress-btn">+</button>
     `;
     card.querySelector('.goal-edit-btn').addEventListener('click', () => editGoal(g.id));
     card.querySelector('.goal-delete-btn').addEventListener('click', () => deleteGoalConfirm(g.id));
@@ -180,6 +185,7 @@ async function editGoal(id) {
         ]
     });
     if (!result) return;
+    if (result.unit && !UNIDADES.includes(result.unit)) { showToast('Unidade inválida. Use ml, reps, km, qty ou sono.', 'error'); return; }
     try {
         await updateDoc(docRef, {
             text: result.text || g.text,
@@ -223,17 +229,31 @@ function openProgressModal(id, text, target, current, unit, isDaily) {
 window.openProgressModal = openProgressModal;
 
 window.saveProgress = async function () {
-    const amount = parseFloat(document.getElementById('modal-progress-input').value);
+    const amount = parseFloat(String(document.getElementById('modal-progress-input').value).replace(',', '.'));
     if (isNaN(amount) || amount <= 0) { showToast('Digite uma quantidade válida.', 'error'); return; }
+    await registrarProgresso(currentGoalData, amount);
+};
+
+// Soma progresso numa meta (usado pelo modal e pelos botões rápidos de água da tela inicial).
+export async function registrarProgresso(meta, amount) {
+    currentGoalData = { ...meta };
     if (!state.currentUser) return;
+    // Meta diária já batida: antes cada novo "+" dava XP de novo.
+    if (currentGoalData.current >= currentGoalData.target) {
+        showToast('Essa meta já foi cumprida hoje. Amanhã ela recomeça! 💪', 'info');
+        closeModal('modal-add-progress');
+        return;
+    }
 
     const newCurrent = Math.min(currentGoalData.current + amount, currentGoalData.target);
     try {
         await updateDoc(doc(db, 'users', state.currentUser.uid, 'goals', currentGoalData.id), { current: newCurrent });
+        const hora = new Date().getHours();
         await addDoc(collection(db, 'users', state.currentUser.uid, 'progressLogs'), {
             goalId: currentGoalData.id, text: currentGoalData.text, amount,
-            unit: currentGoalData.unit, date: getLocalDateStr(), completed: newCurrent >= currentGoalData.target
+            unit: currentGoalData.unit, date: getLocalDateStr(), hora, completed: newCurrent >= currentGoalData.target
         });
+        await registrarHabito(hora);
 
         if (newCurrent >= currentGoalData.target) {
             celebrate();
@@ -259,7 +279,18 @@ window.saveProgress = async function () {
         closeModal('modal-add-progress');
         loadGoals();
     } catch (e) { console.error(e); showToast('Erro ao salvar progresso.', 'error'); }
-};
+}
+
+// Guarda o dia e a hora do registro: o servidor usa pra adiantar o lembrete de quem treina cedo.
+export async function registrarHabito(hora) {
+    const horas = adicionarHora(state.userData.horasRegistro, hora);
+    const dados = { ultimoRegistro: getLocalDateStr(), horasRegistro: horas, horaHabitual: horaHabitual(horas) };
+    state.userData = { ...state.userData, ...dados };
+    try { await setDoc(doc(db, 'users', state.currentUser.uid), dados, { merge: true }); } catch (e) { console.error(e); }
+    if (!state.diasAtivos) state.diasAtivos = [];
+    if (!state.diasAtivos.includes(dados.ultimoRegistro)) state.diasAtivos.push(dados.ultimoRegistro);
+    renderSequenciaCalendario();
+}
 
 async function grantXPForGoal(goal) {
     try {
@@ -279,13 +310,12 @@ async function grantXPForGoal(goal) {
     } catch (e) { console.error(e); }
 }
 
+// O dia do último reset fica no Firestore: antes ficava no localStorage e um segundo
+// aparelho zerava de novo o progresso que já tinha sido feito naquele dia.
 export async function resetDailyGoals() {
     if (!state.currentUser) return;
     const today = getLocalDateStr();
-    const storageKey = 'lastDailyReset_' + state.currentUser.uid;
-    let lastReset = null;
-    try { lastReset = localStorage.getItem(storageKey); } catch (e) {}
-    if (lastReset === today) return;
+    if (state.userData.ultimoResetDiario === today) return;
 
     try {
         const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'goals'));
@@ -297,7 +327,8 @@ export async function resetDailyGoals() {
             }
         });
         await Promise.all(batch);
-        try { localStorage.setItem(storageKey, today); } catch (e) {}
+        await setDoc(doc(db, 'users', state.currentUser.uid), { ultimoResetDiario: today }, { merge: true });
+        state.userData.ultimoResetDiario = today;
         if (batch.length > 0) loadGoals();
     } catch (e) { console.error('Erro no reset diário:', e); }
 }
