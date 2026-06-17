@@ -2,15 +2,13 @@
 // contrário do antigo new Notification() direto, que só disparava com a aba
 // aberta), prompt de instalação do PWA e atalhos de tela inicial em 1 toque.
 //
-// O envio de verdade com o app fechado depende de um back-end mínimo: uma
-// função agendada da Netlify que dispara os pushes nos horários certos
-// (netlify/functions/send-reminders.js). Os detalhes de como ativar isso
-// estão no README.
+// O envio com o app fechado é feito pela function da Vercel (api/send-reminders.js),
+// chamada de hora em hora pelo GitHub Actions.
 import { db, doc, setDoc, collection, getDocs } from './firebase-config.js';
 import { state } from './state.js';
 import { showToast } from './ui.js';
 
-// Chave pública VAPID (a privada fica só na função da Netlify, nunca no front-end).
+// Chave pública VAPID (a privada fica só na Vercel, nunca no front-end).
 const VAPID_PUBLIC_KEY = 'BNwmfRk-h1xnK9_2GbPm8c7hmWUq3WZepmYP7i5NABdeMLFX3mDXPjz8eXEKdosHwn8Ks5mlYCj3ZtrdEVbkN6I';
 
 function urlBase64ToUint8Array(base64String) {
@@ -78,12 +76,17 @@ window.toggleReminder = async function (type, enabled) {
     }
 };
 
+// A conta (Firestore) manda: antes só o localStorage era lido e, num aparelho novo,
+// os lembretes apareciam desligados mesmo estando ativos.
 export function restoreReminders() {
-    let water = false, goal = false;
-    try {
-        water = localStorage.getItem('reminder_water') === '1';
-        goal = localStorage.getItem('reminder_goal') === '1';
-    } catch (e) {}
+    const daConta = state.userData.reminders || {};
+    let water = !!daConta.water, goal = !!daConta.goal;
+    if (!state.userData.reminders) {
+        try {
+            water = localStorage.getItem('reminder_water') === '1';
+            goal = localStorage.getItem('reminder_goal') === '1';
+        } catch (e) {}
+    }
     const waterEl = document.getElementById('toggle-water-reminder');
     const goalEl = document.getElementById('toggle-goal-reminder');
     if (waterEl) waterEl.checked = water;
