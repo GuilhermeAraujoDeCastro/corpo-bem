@@ -9,7 +9,7 @@ import { state } from './state.js';
 import { showToast } from './ui.js';
 
 // Chave pública VAPID (a privada fica só na Vercel, nunca no front-end).
-const VAPID_PUBLIC_KEY = 'BNwmfRk-h1xnK9_2GbPm8c7hmWUq3WZepmYP7i5NABdeMLFX3mDXPjz8eXEKdosHwn8Ks5mlYCj3ZtrdEVbkN6I';
+const VAPID_PUBLIC_KEY = 'BEC4zxncwZB4-Iy1wzpWsZoX8vnu-Kp6QIlmAO83AhRNOwIsjqKv7fqeSLnrzDAYfPpD9d0kk8k7SBAorTGuX-0';
 
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
