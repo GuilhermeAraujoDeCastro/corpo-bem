@@ -11,6 +11,9 @@ Projeto desenvolvido por Guilherme Araújo de Castro.
 - esbuild, para empacotar o JavaScript no build de produção
 - javascript-obfuscator, para ofuscar o código empacotado antes do deploy
 - web-push e firebase-admin, para o envio das notificações push pela função agendada
-- Netlify, para hospedagem, build e a função serverless de notificações
+- html-minifier-terser, para minificar o HTML no build
+- Playwright, para os testes de ponta a ponta
+- Vercel, para hospedagem, build e a função de notificações
+- Google Fonts (Outfit e Inter), para a tipografia
 
 Cada uma dessas bibliotecas segue sua própria licença original, independente da licença deste repositório.
