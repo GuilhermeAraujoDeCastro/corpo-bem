@@ -20,7 +20,7 @@ function getCssVar(name) {
     return (getComputedStyle(document.body).getPropertyValue(name) || '#ffffff').trim();
 }
 
-export function calcularIMC() {
+function calcularIMC() {
     const peso = parseFloat(state.userData.kgAtual || state.userData.kgInicial);
     const altura = parseFloat(state.userData.alturaAtual || state.userData.alturaInicial);
     if (!peso || !altura) return;

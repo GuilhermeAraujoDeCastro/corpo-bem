@@ -9,7 +9,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 // Hora e data de agora em São Paulo (o servidor roda em UTC).
-export function agoraEmSaoPaulo(data = new Date()) {
+function agoraEmSaoPaulo(data = new Date()) {
   const partes = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false,
   }).formatToParts(data).map((p) => [p.type, p.value]));
@@ -18,7 +18,7 @@ export function agoraEmSaoPaulo(data = new Date()) {
 
 // Decide quais lembretes essa pessoa recebe nesta hora.
 // Meta: 20h, ou 12h se ela costuma treinar de manhã e ainda não registrou nada hoje.
-export function lembretesDaHora(usuario, { hora, dia }) {
+function lembretesDaHora(usuario, { hora, dia }) {
   const lembretes = usuario.reminders || {};
   const saida = [];
   if (lembretes.water && hora >= 8 && hora <= 22 && hora % 2 === 0) {

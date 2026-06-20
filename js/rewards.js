@@ -31,7 +31,7 @@ window.createReward = async function () {
     } catch (e) { console.error(e); showToast('Erro ao criar recompensa.', 'error'); }
 };
 
-export function renderSaldoXp() {
+function renderSaldoXp() {
     const el = document.getElementById('saldo-xp');
     if (el) el.textContent = `${saldoXp(state.userData.xp, state.userData.xpGasto)} XP pra gastar`;
 }

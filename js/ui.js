@@ -70,7 +70,7 @@ document.addEventListener('click', (e) => {
 
 // ===== TEMA: sistema, claro, escuro ou automático (escuro das 19h às 6h) =====
 // Quem usava a versão antiga tinha 'darkMode' ('true' = claro, 'false' = escuro): a escolha é mantida.
-export function modoTema() {
+function modoTema() {
     try {
         const antigo = localStorage.getItem('darkMode');
         return localStorage.getItem('corpo-tema') || (antigo === 'true' ? 'claro' : antigo === 'false' ? 'escuro' : 'sistema');
