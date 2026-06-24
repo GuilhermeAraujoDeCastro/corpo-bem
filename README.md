@@ -1,5 +1,7 @@
 # Corpo Bem
 
+![Tela inicial do Corpo Bem](docs/capa.png)
+
 App de treino e hábitos pensado pro celular. Você registra água, sono, treino e peso, acompanha a sequência de dias e troca o XP das metas cumpridas por recompensas que você mesmo cria. Dá pra instalar como PWA e abrir sem internet depois da primeira visita.
 
 Site: https://corpo-bem.vercel.app
@@ -52,10 +54,9 @@ web-treino-metas/
 │   ├── rewards.js         lojinha
 │   ├── notifications.js   lembretes e instalação do app
 │   ├── recap.js           resumo da semana
-│   └── calculos.js        contas sem DOM (as que têm teste)
-├── testes/                testes unitários e o Firebase falso dos testes
-├── e2e/                   testes de ponta a ponta (Playwright)
-└── scripts/servidor-dev.js
+│   └── calculos.js        contas sem DOM nem Firebase
+├── scripts/servidor-dev.js servidor local
+└── docs/capa.png          imagem deste README
 ```
 
 ## Rodando na sua máquina
@@ -67,29 +68,14 @@ npm run dev
 
 O site abre em http://localhost:5311 usando o código-fonte e o Firebase de verdade.
 
-Pra conferir o build de produção:
+Pra conferir o build de produção, igual ao publicado:
 
 ```bash
 npm run build
+npm run preview
 ```
 
-## Testes
-
-```bash
-npm test
-```
-
-Roda os testes unitários: contas de `calculos.js`, horários dos lembretes, checagem de que todo `onclick` do HTML existe no JS e de que as regras do Firestore continuam fechadas.
-
-```bash
-npm run build
-npx playwright install chromium
-npm run test:e2e
-```
-
-Os testes de ponta a ponta usam o build de produção com um Firebase falso em memória, então não criam conta nem gravam nada no projeto real. Eles passam pelo cadastro e onboarding, pela água, pelo plano de treino e a virada do dia, por XP e lojinha, pelo tema, pelo perfil público, pelas exportações, pelo layout no celular e no desktop e pela abertura do app offline.
-
-O GitHub Actions (`.github/workflows/ci.yml`) roda tudo isso a cada push.
+O GitHub Actions (`.github/workflows/ci.yml`) roda o build a cada push, pra pegar erro de empacotamento antes da Vercel.
 
 ## Deploy na Vercel
 
