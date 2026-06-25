@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Treino, água, sono e peso com metas diárias e sequência; Firebase Auth + Firestore, build empacotado e ofuscado pro deploy na Vercel.",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "author": "Guilherme Araujo de Castro",
   "scripts": {
     "build": "node build.js",
