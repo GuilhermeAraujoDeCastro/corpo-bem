@@ -1,5 +1,5 @@
 // Metas: criar, editar, progresso, reset das metas diárias e XP.
-import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc } from './firebase-config.js';
+import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, writeBatch, increment } from './firebase-config.js';
 import { state, getLocalDateStr } from './state.js';
 import { showToast, showConfirm, showPrompt, closeModal, showCelebrationBanner, celebrate } from './ui.js';
 import { renderProfileSummary, renderSequenciaCalendario, renderHidratacao } from './profile.js';
@@ -17,7 +17,8 @@ window.addGoal = async function () {
     const text = document.getElementById('new-goal-input').value.trim();
     const target = parseFloat(document.getElementById('new-goal-target').value);
     const unit = document.getElementById('new-goal-unit').value;
-    if (!text || !target || isNaN(target)) { showToast('Preencha a descrição e a quantidade alvo.', 'error'); return; }
+    // Alvo negativo passava (-100 é "verdadeiro") e a meta se dava por cumprida no primeiro toque.
+    if (!text || !Number.isFinite(target) || target <= 0) { showToast('Preencha a descrição e uma quantidade alvo maior que zero.', 'error'); return; }
     if (!state.currentUser) { showToast('Faça login para salvar metas.', 'error'); return; }
 
     const isDaily = document.getElementById('new-goal-daily').checked;
@@ -234,8 +235,17 @@ window.saveProgress = async function () {
     await registrarProgresso(currentGoalData, amount);
 };
 
+// Toque duplo no "+250": o segundo leria o mesmo "current" da memória e um dos dois se perderia.
+let salvandoProgresso = false;
+
 // Soma progresso numa meta (usado pelo modal e pelos botões rápidos de água da tela inicial).
 export async function registrarProgresso(meta, amount) {
+    if (salvandoProgresso) return;
+    salvandoProgresso = true;
+    try { await _registrarProgresso(meta, amount); } finally { salvandoProgresso = false; }
+}
+
+async function _registrarProgresso(meta, amount) {
     currentGoalData = { ...meta };
     if (!state.currentUser) return;
     // Meta diária já batida: antes cada novo "+" dava XP de novo.
@@ -246,13 +256,19 @@ export async function registrarProgresso(meta, amount) {
     }
 
     const newCurrent = Math.min(currentGoalData.current + amount, currentGoalData.target);
+    const aplicado = newCurrent - currentGoalData.current; // perto do alvo entra só o que faltava
     try {
-        await updateDoc(doc(db, 'users', state.currentUser.uid, 'goals', currentGoalData.id), { current: newCurrent });
+        const uid = state.currentUser.uid;
         const hora = new Date().getHours();
-        await addDoc(collection(db, 'users', state.currentUser.uid, 'progressLogs'), {
-            goalId: currentGoalData.id, text: currentGoalData.text, amount,
+        // Progresso e registro no mesmo lote (entram juntos ou nenhum). increment soma mesmo com
+        // outra aba gravando ao mesmo tempo, e o resumo da semana bate com a meta.
+        const lote = writeBatch(db);
+        lote.update(doc(db, 'users', uid, 'goals', currentGoalData.id), { current: increment(aplicado) });
+        lote.set(doc(collection(db, 'users', uid, 'progressLogs')), {
+            goalId: currentGoalData.id, text: currentGoalData.text, amount: aplicado,
             unit: currentGoalData.unit, date: getLocalDateStr(), hora, completed: newCurrent >= currentGoalData.target
         });
+        await lote.commit();
         await registrarHabito(hora);
 
         if (newCurrent >= currentGoalData.target) {
@@ -267,8 +283,12 @@ export async function registrarProgresso(meta, amount) {
             } else {
                 showCelebrationBanner('🏆 Meta concluída! Incrível!');
                 try {
-                    await addDoc(collection(db, 'users', state.currentUser.uid, 'completedGoals'), { ...currentGoalData, completedAt: getLocalDateStr() });
-                    await deleteDoc(doc(db, 'users', state.currentUser.uid, 'goals', currentGoalData.id));
+                    // Arquiva com o progresso final e tira da lista no mesmo lote: nunca fica nos dois lugares.
+                    const arquivo = writeBatch(db);
+                    arquivo.set(doc(collection(db, 'users', uid, 'completedGoals')),
+                        { ...currentGoalData, current: newCurrent, completedAt: getLocalDateStr() });
+                    arquivo.delete(doc(db, 'users', uid, 'goals', currentGoalData.id));
+                    await arquivo.commit();
                 } catch (e) { console.error(e); }
                 loadGoals();
                 loadCompletedGoals();
@@ -300,10 +320,10 @@ async function grantXPForGoal(goal) {
 
         const userRef = doc(db, 'users', state.currentUser.uid);
         const snap = await getDoc(userRef);
-        let xp = snap.exists() ? (snap.data().xp || 0) : 0;
-        xp += xpGain;
+        const xp = (snap.exists() ? (snap.data().xp || 0) : 0) + xpGain;
         const level = Math.floor(xp / 100) + 1;
-        await setDoc(userRef, { xp, level }, { merge: true });
+        // increment: duas metas concluídas ao mesmo tempo somam os dois XP em vez de uma apagar a outra.
+        await setDoc(userRef, { xp: increment(xpGain), level }, { merge: true });
         state.userData.xp = xp;
         state.userData.level = level;
         renderProfileSummary();
