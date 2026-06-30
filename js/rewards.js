@@ -1,5 +1,5 @@
 // Lojinha: recompensas criadas pela própria pessoa, resgatadas com o XP das metas.
-import { db, doc, setDoc, collection, addDoc, getDocs, updateDoc, deleteDoc } from './firebase-config.js';
+import { db, doc, setDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, writeBatch, increment } from './firebase-config.js';
 import { state } from './state.js';
 import { saldoXp } from './calculos.js';
 import { showToast, showConfirm, closeModal, celebrate, showCelebrationBanner } from './ui.js';
@@ -75,11 +75,13 @@ async function markRewardCompleted(id, custo) {
     const saldo = saldoXp(state.userData.xp, state.userData.xpGasto);
     if (custo > saldo) { showToast(`Faltam ${custo - saldo} XP. Cumpra mais metas pra liberar!`, 'info'); return; }
     try {
-        await updateDoc(doc(db, 'users', state.currentUser.uid, 'rewards', id), { completed: true });
-        if (custo) {
-            state.userData.xpGasto = (state.userData.xpGasto || 0) + custo;
-            await setDoc(doc(db, 'users', state.currentUser.uid), { xpGasto: state.userData.xpGasto }, { merge: true });
-        }
+        // Recompensa e XP gasto no mesmo lote: antes, se a segunda gravação falhasse, a recompensa saía de graça.
+        // increment soma o gasto mesmo com outra aba resgatando ao mesmo tempo.
+        const lote = writeBatch(db);
+        lote.update(doc(db, 'users', state.currentUser.uid, 'rewards', id), { completed: true });
+        if (custo) lote.set(doc(db, 'users', state.currentUser.uid), { xpGasto: increment(custo) }, { merge: true });
+        await lote.commit();
+        if (custo) state.userData.xpGasto = (state.userData.xpGasto || 0) + custo;
         celebrate();
         showCelebrationBanner('🎁 Recompensa recolhida! Você merece!');
         loadRewards();
