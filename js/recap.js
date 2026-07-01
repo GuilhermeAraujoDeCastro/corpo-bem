@@ -1,5 +1,5 @@
 // Resumo dos últimos 7 dias: card que vira imagem pra baixar ou compartilhar.
-import { db, collection, getDocs } from './firebase-config.js';
+import { db, collection, getDocs, query, where } from './firebase-config.js';
 import { state, getLocalDateStr } from './state.js';
 import { showToast } from './ui.js';
 
@@ -7,10 +7,11 @@ export async function generateWeeklyRecap() {
     if (!state.currentUser) return;
     try {
         const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // hoje e os 6 dias antes: 7 datas, não 8
         const since = getLocalDateStr(sevenDaysAgo);
 
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'progressLogs'));
+        // Só os registros da semana, em vez de baixar o histórico inteiro a cada resumo.
+        const snap = await getDocs(query(collection(db, 'users', state.currentUser.uid, 'progressLogs'), where('date', '>=', since)));
         const logs = [];
         snap.forEach(s => logs.push(s.data()));
         const recent = logs.filter(l => l.date >= since);
@@ -45,9 +46,11 @@ function setText(id, value) {
 export function tryShowWeeklyRecapAuto() {
     if (new Date().getDay() !== 0) return;
     const hoje = getLocalDateStr();
+    // Com o uid na chave, duas contas no mesmo navegador não dividem a marca de "já vi".
+    const chave = `corpo-resumo-visto:${state.currentUser ? state.currentUser.uid : ''}`;
     try {
-        if (localStorage.getItem('corpo-resumo-visto') === hoje) return;
-        localStorage.setItem('corpo-resumo-visto', hoje);
+        if (localStorage.getItem(chave) === hoje) return;
+        localStorage.setItem(chave, hoje);
     } catch (e) { /* sem localStorage: abre mesmo assim */ }
     generateWeeklyRecap();
 }
