@@ -61,6 +61,14 @@ export default async function handler(req, res) {
   }
 
   const agora = agoraEmSaoPaulo();
+  // O GitHub (de hora em hora) e o cron da Vercel (23h UTC) chamam juntos às 20h: a segunda
+  // chamada da mesma hora não reenvia. create() falha com ALREADY_EXISTS (código 6) se a hora já foi.
+  try {
+    await db.collection('execucoesLembretes').doc(`${agora.dia}-${agora.hora}`).create({ em: new Date() });
+  } catch (erro) {
+    if (erro.code === 6) return res.status(200).json({ hora: agora.hora, repetida: true });
+    throw erro;
+  }
   const usuarios = await db.collection('users').where('pushSubscription', '!=', null).get();
   const resumo = { enviados: 0, falhas: 0, inscricoesRemovidas: 0 };
   const envios = [];

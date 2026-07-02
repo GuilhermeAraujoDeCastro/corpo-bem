@@ -67,8 +67,10 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window' }).then(clientsArr => {
       const existing = clientsArr.find(c => c.url.includes(self.registration.scope));
-      if (existing) return existing.focus();
-      return self.clients.openWindow(url);
+      // App já aberto: navega pra URL da notificação (ex.: ?action=quick-water) em vez de só focar e perder a ação.
+      const alvo = new URL(url, self.registration.scope).href;
+      if (existing) return existing.navigate(alvo).then(c => (c || existing).focus());
+      return self.clients.openWindow(alvo);
     })
   );
 });
