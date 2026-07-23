@@ -1,10 +1,16 @@
 # Corpo Bem
 
-![Tela inicial do Corpo Bem](docs/capa.png)
+![Capa do Corpo Bem](docs/capa.png)
 
 App de treino e hábitos pensado pro celular. Você registra água, sono, treino e peso, acompanha a sequência de dias e troca o XP das metas cumpridas por recompensas que você mesmo cria. Dá pra instalar como PWA e abrir sem internet depois da primeira visita.
 
 Site: https://corpo-bem.vercel.app
+
+[![CI](https://github.com/GuilhermeAraujoDeCastro/corpo-bem/actions/workflows/ci.yml/badge.svg)](https://github.com/GuilhermeAraujoDeCastro/corpo-bem/actions/workflows/ci.yml)
+
+| Painel | Detalhe | No celular |
+|---|---|---|
+| ![Início com sequência, XP, água, plano de treino e metas do dia](docs/screenshots/01-home.png) | ![Perfil com o gráfico de peso e o IMC](docs/screenshots/02-detalhe.png) | ![Início numa tela de celular](docs/screenshots/03-mobile.png) |
 
 ## O que tem
 
@@ -25,14 +31,14 @@ Site: https://corpo-bem.vercel.app
 
 JavaScript puro em módulos ES, sem framework. Firebase Authentication e Firestore guardam as contas e os dados. Chart.js desenha o gráfico, canvas-confetti faz a comemoração e html2canvas gera a imagem do resumo.
 
-No deploy, o esbuild junta os módulos num arquivo só e o javascript-obfuscator embaralha esse arquivo. CSS e HTML saem minificados. Quem abre o F12 no site publicado não vê o código legível, que fica só neste repositório.
+No deploy, o esbuild junta os módulos num arquivo só e o javascript-obfuscator embaralha esse arquivo. CSS e HTML saem minificados. A ofuscação só deixa o código mais difícil de ler e não guarda segredo: quem protege os dados são as regras do Firestore, e a conta de serviço do Firebase e a chave privada VAPID ficam na function da Vercel.
 
 Os lembretes rodam numa function da Vercel (`api/send-reminders.js`) com web-push e firebase-admin.
 
 ## Estrutura
 
 ```
-web-treino-metas/
+corpo-bem/
 ├── index.html
 ├── manifest.json
 ├── sw.js                  service worker (cache offline e push)
@@ -115,6 +121,6 @@ Vale trocar as chaves VAPID e a conta de serviço de tempos em tempos:
 
 Pra testar push sem mandar notificação pra usuário de verdade, crie um segundo projeto no Firebase só pra testes e aponte um deploy de preview da Vercel pra ele: variáveis `FIREBASE_SERVICE_ACCOUNT` e `CRON_SECRET` próprias no ambiente Preview e, no preview, o `firebaseConfig` de `js/firebase-config.js` trocado pelo do projeto de teste. A resposta da function traz quantos pushes foram enviados, quantos falharam e quantas inscrições mortas foram removidas.
 
-## Licença
+## Licença e contato
 
-Código sob a licença MIT (veja o arquivo LICENSE). As bibliotecas de terceiros estão em CREDITS.md.
+Código sob a licença MIT (veja [LICENSE](LICENSE)). As bibliotecas de terceiros estão em [CREDITS.md](CREDITS.md). Feito por Guilherme Araujo de Castro: [portfólio](https://guilhermearaujodecastro.vercel.app) · [LinkedIn](https://www.linkedin.com/in/guilherme-araujo-de-castro) · guilhermeacastro.2006@gmail.com
