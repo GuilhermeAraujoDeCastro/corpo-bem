@@ -12,7 +12,7 @@ import {
     signOut,
     sendPasswordResetEmail,
     GoogleAuthProvider,
-    signInWithPopup
+    signInWithPopup, connectAuthEmulator
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import {
     getFirestore,
@@ -27,7 +27,7 @@ import {
     query,
     where,
     writeBatch,
-    increment
+    increment, runTransaction, connectFirestoreEmulator
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -39,9 +39,14 @@ const firebaseConfig = {
     appId: "1:249708014404:web:63ed1e93a8f83a0f808511"
 };
 
-export const app = initializeApp(firebaseConfig);
+export const IS_LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+export const app = initializeApp(IS_LOCAL ? { apiKey: 'demo-only', projectId: 'demo-auditoria-corpo', authDomain: 'localhost' } : firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+if (IS_LOCAL) {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9092', { disableWarnings: true });
+    connectFirestoreEmulator(db, '127.0.0.1', 8082);
+}
 
 export {
     createUserWithEmailAndPassword,
@@ -63,5 +68,5 @@ export {
     query,
     where,
     writeBatch,
-    increment
+    increment, runTransaction, connectFirestoreEmulator
 };
