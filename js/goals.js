@@ -1,9 +1,10 @@
 // Metas: criar, editar, progresso, reset das metas diárias e XP.
-import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, writeBatch, increment } from './firebase-config.js';
-import { state, getLocalDateStr } from './state.js';
+import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, writeBatch, increment, runTransaction } from './firebase-config.js';
+import { state, getLocalDateStr, captureSession, isCurrentSession } from './state.js';
 import { showToast, showConfirm, showPrompt, closeModal, showCelebrationBanner, celebrate } from './ui.js';
 import { renderProfileSummary, renderSequenciaCalendario, renderHidratacao } from './profile.js';
 import { adicionarHora, formatarNumero, horaHabitual } from './calculos.js';
+import { targetValue, isRestDay } from './routine-domain.js';
 
 const UNIDADES = ['ml', 'reps', 'km', 'qty', 'sono'];
 
@@ -14,8 +15,9 @@ function escapeHtml(str) {
 }
 
 window.addGoal = async function () {
+    const session = captureSession();
     const text = document.getElementById('new-goal-input').value.trim();
-    const target = parseFloat(document.getElementById('new-goal-target').value);
+    const target = targetValue(document.getElementById('new-goal-target').value);
     const unit = document.getElementById('new-goal-unit').value;
     // Alvo negativo passava (-100 é "verdadeiro") e a meta se dava por cumprida no primeiro toque.
     if (!text || !Number.isFinite(target) || target <= 0) { showToast('Preencha a descrição e uma quantidade alvo maior que zero.', 'error'); return; }
@@ -28,6 +30,7 @@ window.addGoal = async function () {
 
     try {
         await addDoc(collection(db, 'users', state.currentUser.uid, 'goals'), goal);
+        if (!isCurrentSession(session)) return;
         document.getElementById('new-goal-input').value = '';
         document.getElementById('new-goal-target').value = '';
         document.getElementById('new-goal-daily').checked = false;
@@ -41,13 +44,16 @@ window.addGoal = async function () {
 };
 
 export async function loadGoals() {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     const container = document.getElementById('goals-container');
     const list = document.getElementById('goals-list');
 
     try {
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'goals'));
+        const snap = await getDocs(collection(db, 'users', session.uid, 'goals'));
+        if (!isCurrentSession(session)) return;
         if (snap.empty) {
+            state.goals = [];
             container.innerHTML = '<div class="empty-state"><p>Nenhuma meta adicionada ainda.</p><p class="empty-state-hint">Vá para <strong>Metas</strong> para adicionar!</p></div>';
             list.innerHTML = '';
             return;
@@ -70,13 +76,14 @@ export async function loadGoals() {
         });
         state.goals = goals;
         renderHidratacao();
-    } catch (e) {
+    } catch (e) { if (!isCurrentSession(session)) return;
         console.error(e);
         container.innerHTML = '<div class="empty-state"><p>Não consegui carregar suas metas agora.</p></div>';
     }
 }
 
 function createGoalCard(g) {
+    const session = captureSession();
     const card = document.createElement('div');
     card.className = 'card neon-border goal-card';
     const percent = Math.min(100, (g.current / g.target) * 100);
@@ -116,15 +123,17 @@ function createGoalCard(g) {
             <button type="button" class="btn-small goal-add-progress-btn" aria-label="Adicionar progresso em ${escapeHtml(g.text)}">+</button>
         </div>
     `;
-    card.querySelector('.goal-edit-btn').addEventListener('click', () => editGoal(g.id));
-    card.querySelector('.goal-delete-btn').addEventListener('click', () => deleteGoalConfirm(g.id));
-    card.querySelector('.goal-add-progress-btn').addEventListener('click', () => openProgressModal(g.id, g.text, g.target, g.current, g.unit, !!g.isDaily));
+    card.querySelector('.goal-edit-btn').addEventListener('click', () => { if (isCurrentSession(session)) editGoal(g.id); });
+    card.querySelector('.goal-delete-btn').addEventListener('click', () => { if (isCurrentSession(session)) deleteGoalConfirm(g.id); });
+    card.querySelector('.goal-add-progress-btn').disabled = !!g.isDaily && isRestDay(getLocalDateStr(), state.userData.routine);
+    card.querySelector('.goal-add-progress-btn').addEventListener('click', () => { if (isCurrentSession(session)) openProgressModal(g.id, g.text, g.target, g.current, g.unit, !!g.isDaily); });
     return card;
 }
 
 async function deleteGoalConfirm(id) {
+    const session = captureSession();
     const ok = await showConfirm('Deletar essa meta?', 'Deletar');
-    if (!ok || !state.currentUser) return;
+    if (!ok || !session.uid || !isCurrentSession(session)) return;
     try {
         await deleteDoc(doc(db, 'users', state.currentUser.uid, 'goals', id));
         loadGoals();
@@ -132,12 +141,14 @@ async function deleteGoalConfirm(id) {
 }
 
 export async function loadCompletedGoals() {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     const list = document.getElementById('completed-goals-list');
     if (!list) return;
     list.innerHTML = '';
     try {
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'completedGoals'));
+        const snap = await getDocs(collection(db, 'users', session.uid, 'completedGoals'));
+        if (!isCurrentSession(session)) return;
         if (snap.empty) {
             list.innerHTML = '<p class="empty-state-hint text-center">Nenhuma meta concluída ainda. Continue assim! 💪</p>';
             return;
@@ -160,7 +171,7 @@ export async function loadCompletedGoals() {
             card.querySelector('.completed-delete-btn').addEventListener('click', () => deleteCompletedGoal(g.id));
             list.appendChild(card);
         });
-    } catch (e) { console.error(e); }
+    } catch (e) { if (!isCurrentSession(session)) return; console.error(e); }
 }
 
 async function deleteCompletedGoal(id) {
@@ -172,9 +183,11 @@ async function deleteCompletedGoal(id) {
 }
 
 async function editGoal(id) {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     const docRef = doc(db, 'users', state.currentUser.uid, 'goals', id);
     const snap = await getDoc(docRef);
+    if (!isCurrentSession(session)) return;
     if (!snap.exists()) { showToast('Meta não encontrada.', 'error'); return; }
     const g = snap.data();
     const result = await showPrompt({
@@ -185,12 +198,15 @@ async function editGoal(id) {
             { id: 'unit', label: 'Unidade (ml, reps, km, qty, sono)', value: g.unit }
         ]
     });
-    if (!result) return;
+    if (!isCurrentSession(session) || !result) return;
+    const target = targetValue(result.target);
+    if (target === null) { showToast('O alvo deve ser um número finito maior que zero, sem texto extra.', 'error'); return; }
     if (result.unit && !UNIDADES.includes(result.unit)) { showToast('Unidade inválida. Use ml, reps, km, qty ou sono.', 'error'); return; }
     try {
         await updateDoc(docRef, {
             text: result.text || g.text,
-            target: parseFloat(result.target) || g.target,
+            target,
+            current: Math.max(0, Math.min(Number(g.current) || 0, target)),
             unit: result.unit || g.unit
         });
         loadGoals();
@@ -198,7 +214,9 @@ async function editGoal(id) {
 }
 
 let currentGoalData = {};
+let progressSession = null;
 function openProgressModal(id, text, target, current, unit, isDaily) {
+    progressSession = captureSession();
     currentGoalData = { id, text, target, current, unit, isDaily };
     document.getElementById('modal-goal-title').innerText = `Adicionar a "${text}"`;
     document.getElementById('modal-progress-input').value = '';
@@ -230,6 +248,7 @@ function openProgressModal(id, text, target, current, unit, isDaily) {
 window.openProgressModal = openProgressModal;
 
 window.saveProgress = async function () {
+    if (!isCurrentSession(progressSession)) return;
     const amount = parseFloat(String(document.getElementById('modal-progress-input').value).replace(',', '.'));
     if (isNaN(amount) || amount <= 0) { showToast('Digite uma quantidade válida.', 'error'); return; }
     await registrarProgresso(currentGoalData, amount);
@@ -246,67 +265,55 @@ export async function registrarProgresso(meta, amount) {
 }
 
 async function _registrarProgresso(meta, amount) {
-    currentGoalData = { ...meta };
-    if (!state.currentUser) return;
-    // Meta diária já batida: antes cada novo "+" dava XP de novo.
-    if (currentGoalData.current >= currentGoalData.target) {
-        showToast('Essa meta já foi cumprida hoje. Amanhã ela recomeça! 💪', 'info');
-        closeModal('modal-add-progress');
-        return;
-    }
-
-    const newCurrent = Math.min(currentGoalData.current + amount, currentGoalData.target);
-    const aplicado = newCurrent - currentGoalData.current; // perto do alvo entra só o que faltava
+    if (!state.currentUser || !Number.isFinite(amount) || amount <= 0) return;
+    const session = captureSession(), uid = session.uid, today = getLocalDateStr();
+    if (navigator.onLine === false) { showToast('Conecte-se para registrar progresso. Nenhuma alteração confirmada.', 'error'); return; }
     try {
-        const uid = state.currentUser.uid;
-        const hora = new Date().getHours();
-        // Progresso e registro no mesmo lote (entram juntos ou nenhum). increment soma mesmo com
-        // outra aba gravando ao mesmo tempo, e o resumo da semana bate com a meta.
-        const lote = writeBatch(db);
-        lote.update(doc(db, 'users', uid, 'goals', currentGoalData.id), { current: increment(aplicado) });
-        lote.set(doc(collection(db, 'users', uid, 'progressLogs')), {
-            goalId: currentGoalData.id, text: currentGoalData.text, amount: aplicado,
-            unit: currentGoalData.unit, date: getLocalDateStr(), hora, completed: newCurrent >= currentGoalData.target
-        });
-        await lote.commit();
-        await registrarHabito(hora);
-
-        if (newCurrent >= currentGoalData.target) {
-            celebrate();
-            await grantXPForGoal(currentGoalData);
-            closeModal('modal-add-progress');
-
-            if (currentGoalData.isDaily) {
-                await updateDoc(doc(db, 'users', state.currentUser.uid, 'goals', currentGoalData.id), { current: currentGoalData.target });
-                loadGoals();
-                showCelebrationBanner('🎉 Meta diária cumprida! Parabéns!');
-            } else {
-                showCelebrationBanner('🏆 Meta concluída! Incrível!');
-                try {
-                    // Arquiva com o progresso final e tira da lista no mesmo lote: nunca fica nos dois lugares.
-                    const arquivo = writeBatch(db);
-                    arquivo.set(doc(collection(db, 'users', uid, 'completedGoals')),
-                        { ...currentGoalData, current: newCurrent, completedAt: getLocalDateStr() });
-                    arquivo.delete(doc(db, 'users', uid, 'goals', currentGoalData.id));
-                    await arquivo.commit();
-                } catch (e) { console.error(e); }
-                loadGoals();
-                loadCompletedGoals();
+        await resetDailyGoals();
+        if (!isCurrentSession(session)) return;
+        const goalRef = doc(db, 'users', uid, 'goals', meta.id), userRef = doc(db, 'users', uid);
+        const logRef = doc(collection(db, 'users', uid, 'progressLogs'));
+        const awardRef = doc(db, 'users', uid, 'goalAwards', `${meta.id}_${meta.isDaily ? today : 'once'}`);
+        const completedRef = doc(db, 'users', uid, 'completedGoals', meta.id);
+        const result = await runTransaction(db, async tx => {
+            const [goalSnap, userSnap, awardSnap] = await Promise.all([tx.get(goalRef), tx.get(userRef), tx.get(awardRef)]);
+            if (!goalSnap.exists() || !userSnap.exists()) throw new Error('Meta ou conta não encontrada. Atualize a tela.');
+            const goal = goalSnap.data(), user = userSnap.data();
+            if (goal.isDaily && isRestDay(today, user.routine)) throw new Error('Hoje é descanso planejado. As metas reabrem no próximo dia ativo.');
+            const stale = goal.isDaily && (goal.progressDay ? goal.progressDay !== today : user.ultimoResetDiario !== today);
+            const current = stale ? 0 : goal.current || 0;
+            if (current >= goal.target) return { done: true, user };
+            const applied = Math.min(amount, goal.target - current), total = current + applied;
+            const completed = total >= goal.target;
+            const xpGain = !completed || awardSnap.exists() ? 0 : goal.isDaily ? Math.min(50, Math.max(5, Math.round(goal.target / 100) + 10)) : Math.min(200, Math.max(10, Math.round(goal.target * 2)));
+            const xp = (user.xp || 0) + xpGain;
+            tx.set(logRef, { goalId: meta.id, text: goal.text, amount: applied, unit: goal.unit, date: today, hora: new Date().getHours(), completed });
+            if (completed && !goal.isDaily) {
+                tx.set(completedRef, { ...goal, current: total, completedAt: today }); tx.delete(goalRef);
+            } else tx.update(goalRef, { current: total, ...(goal.isDaily ? { progressDay: today } : {}) });
+            if (xpGain) {
+                tx.set(userRef, { xp, level: Math.floor(xp / 100) + 1 }, { merge: true });
+                tx.set(awardRef, { xp: xpGain, date: today });
             }
-            return;
-        }
-
-        closeModal('modal-add-progress');
-        loadGoals();
-    } catch (e) { console.error(e); showToast('Erro ao salvar progresso.', 'error'); }
+            return { completed, user: { ...user, xp, level: Math.floor(xp / 100) + 1 } };
+        });
+        if (!isCurrentSession(session)) return;
+        state.userData = { ...state.userData, ...result.user };
+        if (result.done) showToast('Essa meta já foi cumprida.', 'info');
+        else { await registrarHabito(new Date().getHours()); if (!isCurrentSession(session)) return; if (result.completed) { celebrate(); showCelebrationBanner('Meta concluída!'); } }
+        closeModal('modal-add-progress'); await Promise.all([loadGoals(), loadCompletedGoals()]); renderProfileSummary();
+    } catch (err) { if (isCurrentSession(session)) showToast('Progresso não confirmado: ' + err.message, 'error'); }
 }
 
 // Guarda o dia e a hora do registro: o servidor usa pra adiantar o lembrete de quem treina cedo.
 export async function registrarHabito(hora) {
+    const session = captureSession(), uid = session.uid;
+    if (!uid) return;
     const horas = adicionarHora(state.userData.horasRegistro, hora);
     const dados = { ultimoRegistro: getLocalDateStr(), horasRegistro: horas, horaHabitual: horaHabitual(horas) };
+    try { await setDoc(doc(db, 'users', uid), dados, { merge: true }); } catch (e) { console.error(e); return; }
+    if (!isCurrentSession(session)) return;
     state.userData = { ...state.userData, ...dados };
-    try { await setDoc(doc(db, 'users', state.currentUser.uid), dados, { merge: true }); } catch (e) { console.error(e); }
     if (!state.diasAtivos) state.diasAtivos = [];
     if (!state.diasAtivos.includes(dados.ultimoRegistro)) state.diasAtivos.push(dados.ultimoRegistro);
     renderSequenciaCalendario();
@@ -332,23 +339,31 @@ async function grantXPForGoal(goal) {
 
 // O dia do último reset fica no Firestore: antes ficava no localStorage e um segundo
 // aparelho zerava de novo o progresso que já tinha sido feito naquele dia.
+let resettingDay = null;
 export async function resetDailyGoals() {
     if (!state.currentUser) return;
-    const today = getLocalDateStr();
+    const session = captureSession(), uid = session.uid, today = getLocalDateStr();
     if (state.userData.ultimoResetDiario === today) return;
-
-    try {
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'goals'));
-        const batch = [];
-        snap.forEach(s => {
-            const g = s.data();
-            if (g.isDaily && g.current > 0) {
-                batch.push(updateDoc(doc(db, 'users', state.currentUser.uid, 'goals', s.id), { current: 0 }));
-            }
+    if (resettingDay?.uid === uid && resettingDay.sessionVersion === session.version && resettingDay.today === today) return resettingDay.promise;
+    const promise = (async () => {
+        const userRef = doc(db, 'users', uid);
+        const goals = await getDocs(collection(db, 'users', uid, 'goals'));
+        if (goals.size > 300) throw new Error('Mais de 300 metas: organize a conta antes de renovar o dia.');
+        await runTransaction(db, async tx => {
+            const [userSnap, ...snaps] = await Promise.all([tx.get(userRef), ...goals.docs.map(s => tx.get(s.ref))]);
+            const last = userSnap.exists() ? userSnap.data().ultimoResetDiario : null;
+            snaps.forEach((snap, i) => {
+                if (!snap.exists()) return;
+                const g = snap.data();
+                if (g.isDaily && g.progressDay !== today) {
+                    const alreadyToday = !g.progressDay && last === today;
+                    tx.update(goals.docs[i].ref, { current: alreadyToday ? g.current : 0, progressDay: today });
+                }
+            });
+            tx.set(userRef, { ultimoResetDiario: today }, { merge: true });
         });
-        await Promise.all(batch);
-        await setDoc(doc(db, 'users', state.currentUser.uid), { ultimoResetDiario: today }, { merge: true });
-        state.userData.ultimoResetDiario = today;
-        if (batch.length > 0) loadGoals();
-    } catch (e) { console.error('Erro no reset diário:', e); }
+        if (isCurrentSession(session)) state.userData.ultimoResetDiario = today;
+    })();
+    resettingDay = { uid, today, promise, sessionVersion: session.version };
+    try { return await promise; } finally { if (resettingDay?.promise === promise) resettingDay = null; }
 }

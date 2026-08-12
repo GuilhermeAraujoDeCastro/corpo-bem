@@ -1,8 +1,9 @@
 // Perfil: peso/altura, IMC, gráfico, sequência (com congelador semanal), conquistas,
 // calendário de dias ativos, hidratação, exportações e perfil público só leitura.
+import { nextStreak } from './routine-domain.js';
 import { db, doc, setDoc, getDoc, collection, addDoc, getDocs, deleteDoc, updateProfile } from './firebase-config.js';
 import { csvPesos, formatarNumero, gradeSequencia, saldoXp } from './calculos.js';
-import { state, getLocalDateStr, isValidHeight } from './state.js';
+import { state, getLocalDateStr, captureSession, isCurrentSession, isValidHeight } from './state.js';
 import { showToast } from './ui.js';
 
 const STREAK_BADGES = [
@@ -140,16 +141,19 @@ function _comprimirFotoPerfil(file, maxDimensao = 320, qualidade = 0.75) {
 }
 
 window.salvarFoto = async function (event) {
+    const session = captureSession();
+    if (!session.uid) return;
     const file = event.target.files[0];
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) { showToast('Escolha uma imagem de até 8MB.', 'error'); return; }
 
     try {
         const base64 = await _comprimirFotoPerfil(file);
+        if (!isCurrentSession(session)) return;
         document.getElementById('profile-img').src = base64;
         if (state.currentUser) {
-            try { localStorage.setItem(`profilePic_${state.currentUser.uid}`, base64); } catch (err) {}
-            try { await setDoc(doc(db, 'users', state.currentUser.uid), { profilePic: base64 }, { merge: true }); }
+            try { localStorage.setItem(`profilePic_${session.uid}`, base64); } catch (err) {}
+            try { await setDoc(doc(db, 'users', session.uid), { profilePic: base64 }, { merge: true }); }
             catch (err) { console.error(err); }
         }
     } catch (err) {
@@ -159,6 +163,7 @@ window.salvarFoto = async function (event) {
 };
 
 window.addMeasurements = async function () {
+    const session = captureSession();
     if (!state.currentUser) { showToast('Faça login.', 'error'); return; }
     const pesoVal = document.getElementById('profile-new-weight').value;
     const alturaVal = document.getElementById('profile-new-height').value.trim();
@@ -177,6 +182,7 @@ window.addMeasurements = async function () {
 
         if (peso !== null) {
             await addDoc(collection(db, 'users', uid, 'weights'), { date, weight: peso });
+            if (!isCurrentSession(session)) return;
             updates.kgAtual = peso;
             state.userData.kgAtual = peso;
             setText('profile-weight-current', `${peso} kg`);
@@ -189,6 +195,7 @@ window.addMeasurements = async function () {
         }
         if (Object.keys(updates).length > 0) {
             await setDoc(doc(db, 'users', uid), updates, { merge: true });
+            if (!isCurrentSession(session)) return;
         }
 
         document.getElementById('profile-new-weight').value = '';
@@ -199,21 +206,23 @@ window.addMeasurements = async function () {
 };
 
 export async function loadWeightHistory() {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     try {
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'weights'));
+        const snap = await getDocs(collection(db, 'users', session.uid, 'weights'));
+        if (!isCurrentSession(session)) return;
         const arr = [];
         snap.forEach(s => arr.push(s.data()));
         arr.sort((a, b) => new Date(a.date) - new Date(b.date));
         renderWeightChart(arr.map(x => x.date), arr.map(x => parseFloat(x.weight)));
-    } catch (e) { console.error(e); }
+    } catch (e) { if (!isCurrentSession(session)) return; console.error(e); }
 }
 
 let ultimoGrafico = null;
 
 // Cores vêm das variáveis do tema, então o gráfico é redesenhado quando o tema muda.
 function renderWeightChart(labels, weights) {
-    ultimoGrafico = { labels, weights };
+    ultimoGrafico = { labels, weights, session: captureSession() };
     const ctx = document.getElementById('weight-chart');
     if (!ctx || typeof window.Chart === 'undefined') return;
     const altura = parseFloat(state.userData.alturaAtual || state.userData.alturaInicial) || null;
@@ -247,35 +256,20 @@ function renderWeightChart(labels, weights) {
     });
 }
 
-document.addEventListener('temamudou', () => { if (ultimoGrafico) renderWeightChart(ultimoGrafico.labels, ultimoGrafico.weights); });
+document.addEventListener('temamudou', () => { if (ultimoGrafico && isCurrentSession(ultimoGrafico.session)) renderWeightChart(ultimoGrafico.labels, ultimoGrafico.weights); });
 
 // ===== SEQUÊNCIA (com congelador de 1 dia por semana) =====
 export async function updateStreak() {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     try {
         const today = getLocalDateStr();
         const lastAccess = state.userData.ultimoAcesso;
         if (lastAccess === today) { renderStreakDisplay(); return; }
 
-        const oneDay = 24 * 60 * 60 * 1000;
-        const todayDate = new Date(today + 'T00:00:00');
-        const lastDate = lastAccess ? new Date(lastAccess + 'T00:00:00') : null;
-        const daysGap = lastDate ? Math.round((todayDate - lastDate) / oneDay) : null;
-
-        const lastFreezeStr = state.userData.streakFreezeUsedEm;
-        const daysSinceFreeze = lastFreezeStr ? Math.round((todayDate - new Date(lastFreezeStr + 'T00:00:00')) / oneDay) : Infinity;
-        const freezeDisponivel = daysSinceFreeze >= 7;
-
-        let usouCongelador = false;
-        if (daysGap === 1) {
-            state.userData.sequencia = (state.userData.sequencia || 0) + 1;
-        } else if (daysGap === 2 && freezeDisponivel && (state.userData.sequencia || 0) > 0) {
-            // Faltou exatamente 1 dia e ainda não usou o congelador essa semana: mantém a sequência.
-            state.userData.sequencia = (state.userData.sequencia || 0) + 1;
-            usouCongelador = true;
-        } else {
-            state.userData.sequencia = 1;
-        }
+        const streak = nextStreak(state.userData, today);
+        const usouCongelador = streak.usedFreeze;
+        state.userData.sequencia = streak.count;
         state.userData.ultimoAcesso = today;
 
         const updates = { sequencia: state.userData.sequencia, ultimoAcesso: today };
@@ -284,8 +278,8 @@ export async function updateStreak() {
         const newBadge = checkStreakBadges();
         if (newBadge) updates.badges = state.userData.badges;
 
-        await setDoc(doc(db, 'users', state.currentUser.uid), updates, { merge: true });
-
+        await setDoc(doc(db, 'users', session.uid), updates, { merge: true });
+        if (!isCurrentSession(session)) return;
         renderStreakDisplay();
         if (usouCongelador) showToast('🧊 Você faltou um dia, mas o congelador de sequência te salvou!', 'info');
         if (newBadge) showToast(`${newBadge.icon} Nova conquista: ${newBadge.label}!`, 'success');
@@ -318,6 +312,7 @@ window.showEditProfile = function () {
 };
 
 window.saveProfileChanges = async function () {
+    const session = captureSession(), profileUser = state.currentUser;
     // Antes esse campo editava "username", um dado que nunca aparecia
     // em lugar nenhum do app (o login usa um valor fixo, definido so na
     // criacao da conta, e nao le esse campo de volta). Agora edita o
@@ -331,9 +326,11 @@ window.saveProfileChanges = async function () {
         if (newDisplayname) updates.displayname = newDisplayname;
         if (newPhrase) updates.frase = newPhrase;
         if (Object.keys(updates).length > 0) {
-            await setDoc(doc(db, 'users', state.currentUser.uid), updates, { merge: true });
+            await setDoc(doc(db, 'users', session.uid), updates, { merge: true });
+            if (!isCurrentSession(session)) return;
             state.userData = { ...state.userData, ...updates };
-            if (newDisplayname) await updateProfile(state.currentUser, { displayName: newDisplayname });
+            if (newDisplayname) await updateProfile(profileUser, { displayName: newDisplayname });
+            if (!isCurrentSession(session)) return;
         }
         document.getElementById('modal-edit-profile').style.display = 'none';
         renderProfileSummary();
@@ -352,13 +349,15 @@ window.saveProfileChanges = async function () {
 
 // ===== CALENDÁRIO DE SEQUÊNCIA (estilo contribuições do GitHub) =====
 export async function carregarDiasAtivos() {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     try {
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'progressLogs'));
+        const snap = await getDocs(collection(db, 'users', session.uid, 'progressLogs'));
+        if (!isCurrentSession(session)) return;
         const dias = new Set();
         snap.forEach(s => { if (s.data().date) dias.add(s.data().date); });
         state.diasAtivos = [...dias];
-    } catch (e) { console.error(e); state.diasAtivos = []; }
+    } catch (e) { if (!isCurrentSession(session)) return; console.error(e); state.diasAtivos = []; }
     renderSequenciaCalendario();
 }
 
@@ -418,9 +417,11 @@ async function lerColecao(nome) {
 }
 
 window.exportarPesosCsv = async function () {
+    const session = captureSession();
     if (!state.currentUser) return;
     try {
         const pesos = await lerColecao('weights');
+        if (!isCurrentSession(session)) return;
         if (!pesos.length) { showToast('Ainda não tem peso registrado.', 'info'); return; }
         const altura = state.userData.alturaAtual || state.userData.alturaInicial;
         // BOM no começo faz o Excel reconhecer os acentos.
@@ -430,12 +431,14 @@ window.exportarPesosCsv = async function () {
 
 // Tudo da conta num JSON, pra levar o histórico pra outro app se quiser.
 window.exportarDadosJson = async function () {
+    const session = captureSession();
     if (!state.currentUser) return;
     try {
-        const [goals, completedGoals, progressLogs, rewards, weights] = await Promise.all(
-            ['goals', 'completedGoals', 'progressLogs', 'rewards', 'weights'].map(lerColecao));
+        const [goals, completedGoals, progressLogs, rewards, weights, workouts, workoutSessions, goalAwards, redemptions] = await Promise.all(
+            ['goals', 'completedGoals', 'progressLogs', 'rewards', 'weights', 'workouts', 'workoutSessions', 'goalAwards', 'redemptions'].map(lerColecao));
+        if (!isCurrentSession(session)) return;
         const { pushSubscription, ...perfil } = state.userData;
-        const dados = { exportadoEm: new Date().toISOString(), perfil, goals, completedGoals, progressLogs, rewards, weights };
+        const dados = { exportadoEm: new Date().toISOString(), perfil, goals, completedGoals, progressLogs, rewards, weights, workouts, workoutSessions, goalAwards, redemptions };
         baixarArquivo(JSON.stringify(dados, null, 2), 'corpo-bem-meus-dados.json', 'application/json');
     } catch (e) { console.error(e); showToast('Não consegui exportar agora.', 'error'); }
 };
