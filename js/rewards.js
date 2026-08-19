@@ -1,7 +1,8 @@
 // Lojinha: recompensas criadas pela própria pessoa, resgatadas com o XP das metas.
-import { db, doc, setDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, writeBatch, increment } from './firebase-config.js';
-import { state } from './state.js';
+import { db, doc, setDoc, collection, addDoc, getDocs, updateDoc, deleteDoc, writeBatch, increment, runTransaction } from './firebase-config.js';
+import { state, captureSession, isCurrentSession } from './state.js';
 import { saldoXp } from './calculos.js';
+import { claimReward } from './transactions.js';
 import { showToast, showConfirm, closeModal, celebrate, showCelebrationBanner } from './ui.js';
 
 function escapeHtml(str) {
@@ -15,6 +16,7 @@ window.showAddReward = function () {
 };
 
 window.createReward = async function () {
+    const session = captureSession();
     const title = document.getElementById('reward-title').value.trim();
     const goal = document.getElementById('reward-goal').value.trim();
     const custo = Math.max(0, parseInt(document.getElementById('reward-cost').value, 10) || 0);
@@ -23,6 +25,7 @@ window.createReward = async function () {
 
     try {
         await addDoc(collection(db, 'users', state.currentUser.uid, 'rewards'), { title, goal, custoXp: custo, createdAt: Date.now(), completed: false });
+        if (!isCurrentSession(session)) return;
         closeModal('modal-add-reward');
         document.getElementById('reward-title').value = '';
         document.getElementById('reward-goal').value = '';
@@ -37,12 +40,14 @@ function renderSaldoXp() {
 }
 
 export async function loadRewards() {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     const list = document.getElementById('rewards-list');
     list.innerHTML = '';
     renderSaldoXp();
     try {
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'rewards'));
+        const snap = await getDocs(collection(db, 'users', session.uid, 'rewards'));
+        if (!isCurrentSession(session)) return;
         if (snap.empty) {
             list.innerHTML = '<p class="empty-state-hint text-center">Nenhuma recompensa criada ainda.</p>';
             return;
@@ -63,35 +68,35 @@ export async function loadRewards() {
                         : '<button type="button" class="btn-small reward-claim-btn">🎁 Recolher</button>'}
                 </div>
             `;
-            if (r.completed) card.querySelector('.reward-remove-btn').addEventListener('click', () => deleteReward(id));
-            else card.querySelector('.reward-claim-btn').addEventListener('click', () => markRewardCompleted(id, r.custoXp || 0));
+            if (r.completed) card.querySelector('.reward-remove-btn').addEventListener('click', () => { if (isCurrentSession(session)) deleteReward(id); });
+            else card.querySelector('.reward-claim-btn').addEventListener('click', event => { if (isCurrentSession(session)) markRewardCompleted(id, event.currentTarget); });
             list.appendChild(card);
         });
-    } catch (e) { console.error(e); }
+    } catch (e) { if (!isCurrentSession(session)) return; console.error(e); }
 }
 
-async function markRewardCompleted(id, custo) {
-    if (!state.currentUser) return;
-    const saldo = saldoXp(state.userData.xp, state.userData.xpGasto);
-    if (custo > saldo) { showToast(`Faltam ${custo - saldo} XP. Cumpra mais metas pra liberar!`, 'info'); return; }
+const claiming = new Set();
+async function markRewardCompleted(id, button) {
+    if (!state.currentUser || claiming.has(id)) return;
+    if (navigator.onLine === false) { showToast('Conecte-se para resgatar. Nenhum XP foi descontado.', 'error'); return; }
+    const session = captureSession(), uid = session.uid;
+    claiming.add(id); button.disabled = true; button.textContent = 'Resgatando…';
     try {
-        // Recompensa e XP gasto no mesmo lote: antes, se a segunda gravação falhasse, a recompensa saía de graça.
-        // increment soma o gasto mesmo com outra aba resgatando ao mesmo tempo.
-        const lote = writeBatch(db);
-        lote.update(doc(db, 'users', state.currentUser.uid, 'rewards', id), { completed: true });
-        if (custo) lote.set(doc(db, 'users', state.currentUser.uid), { xpGasto: increment(custo) }, { merge: true });
-        await lote.commit();
-        if (custo) state.userData.xpGasto = (state.userData.xpGasto || 0) + custo;
-        celebrate();
-        showCelebrationBanner('🎁 Recompensa recolhida! Você merece!');
-        loadRewards();
-    } catch (e) { console.error(e); }
+        const result = await claimReward(fn => runTransaction(db, fn), doc(db, 'users', uid), doc(db, 'users', uid, 'rewards', id), doc(db, 'users', uid, 'redemptions', id));
+        if (!isCurrentSession(session)) return;
+        state.userData.xpGasto = result.spent;
+        if (!result.repeated) { celebrate(); showCelebrationBanner('Recompensa resgatada.'); }
+        else showToast('Essa recompensa já havia sido resgatada. Nenhum desconto adicional.', 'info');
+        await loadRewards();
+    } catch (err) { if (isCurrentSession(session)) { showToast('Resgate não confirmado: ' + err.message, 'error'); button.disabled = false; button.textContent = 'Recolher'; } }
+    finally { claiming.delete(id); }
 }
 
 async function deleteReward(id) {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     const ok = await showConfirm('Remover esta recompensa?', 'Remover');
-    if (!ok) return;
+    if (!ok || !isCurrentSession(session)) return;
     try {
         await deleteDoc(doc(db, 'users', state.currentUser.uid, 'rewards', id));
         loadRewards();
