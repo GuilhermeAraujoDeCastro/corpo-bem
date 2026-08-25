@@ -49,6 +49,10 @@
         <button type="button" onclick="toggleDarkMode()" class="dark-toggle-btn" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro"></button>
     </div>
 
+    <section id="session-loading-screen" class="screen" aria-label="Carregando conta">
+        <div class="auth-card"><h1>Corpo Bem</h1><p role="status" aria-live="polite">Carregando os dados desta conta…</p></div>
+    </section>
+
     <!-- LOGIN -->
     <div id="login-screen" class="screen active">
         <div class="auth-card">
@@ -163,6 +167,8 @@
 
             <div class="card" id="hidratacao-card"></div>
             <div class="card" id="plano-card"></div>
+            <section class="card" id="routine-card" aria-label="Agenda de descanso"></section>
+            <section class="card" id="workouts-card" aria-label="Treinos personalizados"></section>
 
             <div class="card">
                 <p class="card-title">📅 Seus dias ativos</p>

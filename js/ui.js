@@ -9,6 +9,7 @@ function escapeHtmlPrompt(str) {
 }
 
 export function showLogin() {
+    document.getElementById('session-loading-screen')?.classList.remove('active');
     document.getElementById('login-screen').classList.add('active');
     document.getElementById('signup-screen').classList.remove('active');
     document.getElementById('onboarding-screen').classList.remove('active');
@@ -16,6 +17,7 @@ export function showLogin() {
 }
 
 export function showSignup() {
+    document.getElementById('session-loading-screen')?.classList.remove('active');
     document.getElementById('login-screen').classList.remove('active');
     document.getElementById('signup-screen').classList.add('active');
     document.getElementById('onboarding-screen').classList.remove('active');
@@ -23,6 +25,7 @@ export function showSignup() {
 }
 
 export function showOnboardingScreen() {
+    document.getElementById('session-loading-screen')?.classList.remove('active');
     document.getElementById('login-screen').classList.remove('active');
     document.getElementById('signup-screen').classList.remove('active');
     document.getElementById('onboarding-screen').classList.add('active');
@@ -30,10 +33,37 @@ export function showOnboardingScreen() {
 }
 
 export function showApp() {
+    document.getElementById('session-loading-screen')?.classList.remove('active');
     document.getElementById('login-screen').classList.remove('active');
     document.getElementById('signup-screen').classList.remove('active');
     document.getElementById('onboarding-screen').classList.remove('active');
     document.getElementById('main-app').classList.add('active');
+}
+
+export function showSessionLoading() {
+    document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
+    document.getElementById('session-loading-screen')?.classList.add('active');
+}
+export function clearPrivateView() {
+    for (const id of ['workouts-card','routine-card','goals-container','goals-list','completed-goals-list','rewards-list','plano-card','hidratacao-card','sequencia-calendario','badges-list']) {
+        const box = document.getElementById(id); if (box) box.replaceChildren();
+    }
+    for (const id of ['workouts-card','routine-card','goals-container']) {
+        const box = document.getElementById(id); if (box) box.textContent = 'Carregando os dados desta conta…';
+    }
+    for (const id of ['greeting','streak-count','profile-weight-initial','profile-weight-current','profile-height','profile-level','profile-xp','profile-objetivo','home-xp-label','saldo-xp','imc-value','imc-label','recap-water','recap-km','recap-reps','recap-percent','recap-streak']) {
+        const box = document.getElementById(id); if (box) box.textContent = '—';
+    }
+    document.querySelectorAll('.modal').forEach(modal => { modal.style.display = 'none'; });
+    document.querySelectorAll('.confirm-overlay').forEach(node => { node.querySelector('.prompt-cancel,.confirm-cancel')?.click(); node.remove(); });
+    document.getElementById('celebration-banner')?.remove();
+    document.getElementById('app-toast')?.remove();
+    document.querySelectorAll('#main-app input,#onboarding-screen input,.modal input,.modal textarea').forEach(input => { if (input.type === 'checkbox') input.checked = false; else input.value = ''; });
+    const photo = document.getElementById('profile-img'); if (photo) photo.removeAttribute('src');
+    const bar = document.getElementById('home-xp-bar'); if (bar) bar.style.width = '0%';
+    const quote = document.querySelector('.quote'); if (quote) quote.textContent = '';
+    if (window._weightChart) { window._weightChart.destroy(); window._weightChart = null; }
+    const canvas = document.getElementById('weight-chart'); if (canvas) canvas.width = canvas.width;
 }
 
 export function switchTab(tabId) {

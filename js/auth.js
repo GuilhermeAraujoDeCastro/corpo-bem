@@ -16,8 +16,8 @@ import {
     updateProfile, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup,
     doc, setDoc, getDoc, collection, addDoc
 } from './firebase-config.js';
-import { state, getLocalDateStr, isValidHeight, formatHeight } from './state.js';
-import { showLogin, showSignup, showOnboardingScreen, showApp, showToast, showPrompt } from './ui.js';
+import { state, getLocalDateStr, isValidHeight, formatHeight, beginSession, captureSession, isCurrentSession } from './state.js';
+import { showLogin, showSignup, showOnboardingScreen, showApp, showToast, showPrompt, showSessionLoading, clearPrivateView } from './ui.js';
 import { metasSugeridas, usuarioValido, formatarNumero } from './calculos.js';
 
 let onAuthenticatedApp = async () => {};
@@ -27,47 +27,48 @@ export function initAuth(onAuthenticatedAppCallback) {
     onAuthenticatedApp = onAuthenticatedAppCallback;
     onAuthStateChanged(auth, async (user) => {
         if (state.authActionInProgress) return;
+        if ((user?.uid || null) !== (auth.currentUser?.uid || null)) return;
         if (user) {
             await routeAfterAuth(user);
         } else {
+            beginSession(null); clearPrivateView();
             showLogin();
         }
     });
 }
 
-async function loadUserData(uid) {
+async function loadUserData(uid, session) {
     try {
         const snap = await getDoc(doc(db, 'users', uid));
-        if (snap.exists()) state.userData = snap.data();
+        if (!isCurrentSession(session)) return false;
+        state.userData = snap.exists() ? snap.data() : {};
         return true;
-    } catch (e) {
-        console.error('Erro carregando dados do usuário', e);
+    } catch (error) {
+        if (isCurrentSession(session)) console.error('Erro carregando dados do usuário', error);
         return false;
     }
 }
-
 async function routeAfterAuth(user) {
-    state.currentUser = user;
-    const carregou = await loadUserData(user.uid);
-    if (!carregou) {
-        // Correção: antes, qualquer falha ao carregar os dados (permissão do
-        // Firestore ainda não publicada, conexão instável, extensão do
-        // navegador bloqueando a requisição) caía direto no bloco de baixo e
-        // mandava a pessoa pro onboarding, como se fosse conta nova. Pra
-        // quem já tinha conta, terminar o onboarding de novo sobrescrevia
-        // peso, altura e zerava a sequência de dias. Agora uma falha real
-        // de carregamento não decide nada sozinha: volta pro login com um
-        // aviso, em vez de arriscar apagar o progresso de quem já tem conta.
-        showLogin();
-        showToast('Não consegui carregar sua conta agora. Verifique sua conexão (ou uma extensão do navegador bloqueando o Firebase) e entre de novo.', 'error');
+    const session = beginSession(user);
+    tempOnboardingData = {};
+    clearPrivateView(); showSessionLoading();
+    const loaded = await loadUserData(user.uid, session);
+    if (!isCurrentSession(session)) return;
+    if (!loaded) {
+        showLogin(); showToast('Não consegui carregar sua conta. Confira a conexão e entre novamente.', 'error');
         return;
     }
     if (!state.userData.kgInicial) {
-        showOnboardingScreen();
-        window.showOnboardingStep('weight');
-    } else {
-        showApp();
+        showOnboardingScreen(); window.showOnboardingStep('weight');
+        return;
+    }
+    try {
         await onAuthenticatedApp();
+        if (isCurrentSession(session)) { state.readySessionVersion = session.version; showApp(); }
+    } catch (error) {
+        if (!isCurrentSession(session)) return;
+        clearPrivateView(); showLogin();
+        showToast('Não consegui carregar os dados desta conta. Tente entrar novamente.', 'error');
     }
 }
 
@@ -126,9 +127,11 @@ window.goSignup = async function () {
     state.authActionInProgress = true;
     try {
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
+        const session = beginSession(userCred.user); clearPrivateView(); showSessionLoading();
         await updateProfile(userCred.user, { displayName: displayname });
-        state.currentUser = userCred.user;
+        if (!isCurrentSession(session)) return;
         await setDoc(doc(db, 'users', userCred.user.uid), { username: usernameLower, displayname, createdAt: Date.now() }, { merge: true });
+        if (!isCurrentSession(session)) return;
         tempOnboardingData = {};
         showOnboardingScreen();
         window.showOnboardingStep('weight');
@@ -145,11 +148,13 @@ window.loginWithGoogle = async function () {
     try {
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
+        const session = beginSession(user); clearPrivateView(); showSessionLoading();
         const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!isCurrentSession(session)) return;
         if (!snap.exists()) {
             await setDoc(doc(db, 'users', user.uid), { username: user.email, displayname: user.displayName, createdAt: Date.now() }, { merge: true });
         }
-        await routeAfterAuth(user);
+        if (isCurrentSession(session)) await routeAfterAuth(user);
     } catch (err) {
         showToast(friendlyAuthError(err), 'error');
     } finally {
@@ -247,28 +252,35 @@ window.finishOnboarding = async function () {
     // caminho de "ja acessou hoje" e nunca chegaria a 1 - a sequencia
     // ficava sempre um dia atrasada em relacao ao uso real.
 
-    const uid = state.currentUser.uid;
+    const session = captureSession(), uid = session.uid;
+    if (!uid) return;
     try {
         await setDoc(doc(db, 'users', uid), tempOnboardingData, { merge: true });
+        if (!isCurrentSession(session)) return;
         await addDoc(collection(db, 'users', uid, 'weights'), { date: getLocalDateStr(), weight: tempOnboardingData.kgInicial });
+        if (!isCurrentSession(session)) return;
         const sugestoes = metasSugeridas(tempOnboardingData.objetivo);
         const marcadas = [...document.querySelectorAll('[data-sugestao]:checked')].map(el => sugestoes[Number(el.dataset.sugestao)]);
         await Promise.all(marcadas.map(m => addDoc(collection(db, 'users', uid, 'goals'), { ...m, current: 0, createdAt: Date.now() })));
+        if (!isCurrentSession(session)) return;
         state.userData = { ...state.userData, ...tempOnboardingData }; // mantém usuário e nome salvos no cadastro
-        showApp();
+        showSessionLoading();
         await onAuthenticatedApp();
+        if (isCurrentSession(session)) { state.readySessionVersion = session.version; showApp(); }
     } catch (e) {
-        showToast('Erro ao salvar seus dados: ' + e.message, 'error');
+        if (isCurrentSession(session)) { clearPrivateView(); showLogin(); showToast('Erro ao salvar seus dados: ' + e.message, 'error'); }
     }
 };
 
 window.signOutAccount = async function () {
+    const session = beginSession(null); clearPrivateView(); showLogin();
+    tempOnboardingData = {};
     try {
         await signOut(auth);
-        state.currentUser = null;
-        state.userData = {};
+        if (!isCurrentSession(session)) return;
         showLogin();
     } catch (e) {
+        if (!isCurrentSession(session)) return;
         console.error(e);
         showToast('Erro ao sair da conta.', 'error');
     }
