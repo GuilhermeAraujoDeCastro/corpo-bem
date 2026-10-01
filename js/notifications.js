@@ -4,8 +4,8 @@
 //
 // O envio com o app fechado é feito pela function da Vercel (api/send-reminders.js),
 // chamada de hora em hora pelo GitHub Actions.
-import { db, doc, setDoc, collection, getDocs } from './firebase-config.js';
-import { state } from './state.js';
+import { db, doc, setDoc, collection, getDocs, IS_LOCAL } from './firebase-config.js';
+import { state, captureSession, isCurrentSession } from './state.js';
 import { showToast } from './ui.js';
 
 // Chave pública VAPID (a privada fica só na Vercel, nunca no front-end).
@@ -54,6 +54,12 @@ async function showLocalNotification(title, body) {
 }
 
 window.toggleReminder = async function (type, enabled) {
+    if (IS_LOCAL) {
+        const toggle = document.getElementById(`toggle-${type}-reminder`);
+        if (toggle) toggle.checked = false;
+        showToast('Lembretes estão desativados no ambiente local de demonstração.', 'info');
+        return;
+    }
     if (enabled) {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
@@ -122,6 +128,7 @@ window.installApp = async function () {
 // ===== ATALHOS DE TELA INICIAL (manifest "shortcuts") =====
 // Abre direto no registro rápido de água/treino, sem precisar navegar pelo app.
 export async function handleQuickActionFromUrl() {
+    const session = captureSession();
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
     if (!action) return;
@@ -132,7 +139,8 @@ export async function handleQuickActionFromUrl() {
     if (!targetUnit) return;
 
     try {
-        const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'goals'));
+        const snap = await getDocs(collection(db, 'users', session.uid, 'goals'));
+        if (!isCurrentSession(session)) return;
         let match = null;
         snap.forEach(s => { if (!match && s.data().unit === targetUnit) match = { id: s.id, ...s.data() }; });
         if (typeof window.switchTab === 'function') window.switchTab('metas');

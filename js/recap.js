@@ -1,17 +1,19 @@
 // Resumo dos últimos 7 dias: card que vira imagem pra baixar ou compartilhar.
 import { db, collection, getDocs, query, where } from './firebase-config.js';
-import { state, getLocalDateStr } from './state.js';
+import { state, getLocalDateStr, captureSession, isCurrentSession } from './state.js';
 import { showToast } from './ui.js';
 
 export async function generateWeeklyRecap() {
-    if (!state.currentUser) return;
+    const session = captureSession();
+    if (!session.uid) return;
     try {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6); // hoje e os 6 dias antes: 7 datas, não 8
         const since = getLocalDateStr(sevenDaysAgo);
 
         // Só os registros da semana, em vez de baixar o histórico inteiro a cada resumo.
-        const snap = await getDocs(query(collection(db, 'users', state.currentUser.uid, 'progressLogs'), where('date', '>=', since)));
+        const snap = await getDocs(query(collection(db, 'users', session.uid, 'progressLogs'), where('date', '>=', since)));
+        if (!isCurrentSession(session)) return;
         const logs = [];
         snap.forEach(s => logs.push(s.data()));
         const recent = logs.filter(l => l.date >= since);
@@ -33,7 +35,7 @@ export async function generateWeeklyRecap() {
         setText('recap-streak', `${seq} ${seq === 1 ? 'dia' : 'dias'}`);
 
         document.getElementById('modal-weekly-recap').style.display = 'block';
-    } catch (e) { console.error(e); showToast('Não consegui montar seu resumo agora.', 'error'); }
+    } catch (e) { if (!isCurrentSession(session)) return; console.error(e); showToast('Não consegui montar seu resumo agora.', 'error'); }
 }
 window.generateWeeklyRecap = generateWeeklyRecap;
 

@@ -1,7 +1,7 @@
 // Plano de treino pronto (ABC, Push/Pull/Legs, corpo inteiro): mostra o treino da vez
 // e avança a sequência quando a pessoa marca que treinou.
 import { db, doc, setDoc, collection, addDoc } from './firebase-config.js';
-import { state, getLocalDateStr } from './state.js';
+import { state, getLocalDateStr, captureSession, isCurrentSession } from './state.js';
 import { showToast, showCelebrationBanner, celebrate } from './ui.js';
 import { PLANOS, treinoDaVez } from './calculos.js';
 import { registrarHabito } from './goals.js';
@@ -32,28 +32,35 @@ export function renderPlano() {
 }
 
 async function salvarPlano(plano) {
+  const session = captureSession();
   state.userData.plano = plano;
-  await setDoc(doc(db, 'users', state.currentUser.uid), { plano }, { merge: true });
+  await setDoc(doc(db, 'users', session.uid), { plano }, { merge: true });
+  if (!isCurrentSession(session)) return;
   renderPlano();
 }
 
 window.escolherPlano = async function (tipo) {
+  const session = captureSession();
   if (!state.currentUser || !PLANOS[tipo]) return;
   try {
     await salvarPlano({ tipo, indice: 0, ultimoTreino: null });
+    if (!isCurrentSession(session)) return;
     showToast(`Plano ${PLANOS[tipo].nome} escolhido!`, 'success');
   } catch (e) { console.error(e); showToast('Não consegui salvar o plano.', 'error'); }
 };
 
 window.trocarPlano = async function () {
+  const session = captureSession();
   if (!state.currentUser) return;
   state.userData.plano = null;
   await setDoc(doc(db, 'users', state.currentUser.uid), { plano: null }, { merge: true });
+  if (!isCurrentSession(session)) return;
   renderPlano();
 };
 
 // Marca o treino como feito: entra no histórico (conta pro calendário e pro resumo) e avança a vez.
 window.concluirTreino = async function () {
+  const session = captureSession();
   const plano = state.userData.plano;
   if (!state.currentUser || !plano) return;
   const hoje = getLocalDateStr();
@@ -63,8 +70,11 @@ window.concluirTreino = async function () {
     await addDoc(collection(db, 'users', state.currentUser.uid, 'progressLogs'), {
       goalId: 'plano', text: treino.nome, amount: 1, unit: 'treino', date: hoje, hora: new Date().getHours(), completed: true,
     });
+    if (!isCurrentSession(session)) return;
     await salvarPlano({ ...plano, indice: (plano.indice || 0) + 1, ultimoTreino: hoje });
+    if (!isCurrentSession(session)) return;
     await registrarHabito(new Date().getHours()); // também atualiza o calendário
+    if (!isCurrentSession(session)) return;
     celebrate();
     showCelebrationBanner('💪 Treino registrado!');
   } catch (e) { console.error(e); showToast('Não consegui registrar o treino.', 'error'); }
