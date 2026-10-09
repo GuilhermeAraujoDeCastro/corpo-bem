@@ -1,16 +1,75 @@
+// Modelo: users/{uid} contém perfil, XP, agenda e plano pronto; goals e
+// completedGoals usam alvo/progresso válidos. Rewards e redemptions formam
+// um resgate idempotente. Workouts são modelos; workoutSessions são snapshots.
+// UID proprietário deriva do caminho, nunca de campo fornecido pelo cliente.
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{database}/documents {
-    // Cada conta só lê e grava os próprios dados: users/{uid} e tudo dentro
-    // (goals, rewards, weights, progressLogs, completedGoals).
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-
-      match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-
+ match /databases/{database}/documents {
+  function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+  function text(v, max) { return v is string && v.size() <= max; }
+  function validRoutine(r) { return r is map && r.keys().hasOnly(['restWeekdays','pauseStart','pauseEnd']) && r.restWeekdays is list && r.restWeekdays.size() <= 7 && r.restWeekdays.hasOnly([0,1,2,3,4,5,6]) && text(r.pauseStart,10) && text(r.pauseEnd,10); }
+  function validUser(m) { return m.get('xp',0) is int && m.get('xp',0) >= 0 && m.get('xp',0) <= 1000000000 && m.get('xpGasto',0) is int && m.get('xpGasto',0) >= 0 && m.get('xpGasto',0) <= 1000000000 && (!('routine' in m) || validRoutine(m.routine)); }
+  function validGoal(m) {
+   return m.keys().hasOnly(['id','text','target','current','unit','isDaily','deadline','createdAt','completedAt','progressDay'])
+    && text(m.text,120) && m.text.size() > 0 && m.target is number && m.target > 0 && m.target <= 1000000
+    && m.current is number && m.current >= 0 && m.current <= m.target
+    && m.unit in ['ml','reps','km','qty','sono'] && m.isDaily is bool
+    && text(m.get('deadline',''),10) && text(m.get('progressDay',''),10) && text(m.get('completedAt',''),10)
+    && m.createdAt is number && m.createdAt >= 0;
+  }
+  function validReward(m) { return m.keys().hasOnly(['title','goal','custoXp','createdAt','completed','redeemedAt']) && text(m.title,80) && m.title.size() > 0 && text(m.goal,120) && m.goal.size() > 0 && m.get('custoXp',0) is int && m.get('custoXp',0) >= 0 && m.get('custoXp',0) <= 1000000000 && m.completed is bool && m.createdAt is number && m.get('redeemedAt',0) is number; }
+  function validRedemption(m) { return m.keys().hasOnly(['cost','redeemedAt']) && m.cost is int && m.cost >= 0 && m.cost <= 1000000000 && m.redeemedAt is number; }
+  function validExercise(e) {
+    let name = e.name;
+    let sets = e.sets;
+    let reps = e.reps;
+    let load = e.load;
+    return e.keys().hasOnly(['name','sets','reps','load']) && name is string && name.size() > 0 && name.size() <= 80 && sets is int && sets >= 1 && sets <= 100 && reps is int && reps >= 1 && reps <= 1000 && load is number && load >= 0 && load <= 2000;
+  }
+  function validExercises(e) { let n = e.size(); return e is list && n > 0 && n <= 8
+    && (n <= 0 || validExercise(e[0]))
+    && (n <= 1 || validExercise(e[1]))
+    && (n <= 2 || validExercise(e[2]))
+    && (n <= 3 || validExercise(e[3]))
+    && (n <= 4 || validExercise(e[4]))
+    && (n <= 5 || validExercise(e[5]))
+    && (n <= 6 || validExercise(e[6]))
+    && (n <= 7 || validExercise(e[7]))
+  ; }
+  function validWorkout(m) { return m.keys().hasOnly(['name','exercises','createdAt','updatedAt']) && text(m.name,80) && m.name.size() > 0 && validExercises(m.exercises) && m.createdAt is number && m.updatedAt is number; }
+  function validSession(m) { return m.keys().hasOnly(['name','exercises','workoutId','date','createdAt']) && text(m.name,80) && validExercises(m.exercises) && text(m.workoutId,120) && text(m.date,10) && m.createdAt is number; }
+  function validLog(m) { return m.keys().hasOnly(['goalId','text','amount','unit','date','hora','completed']) && text(m.goalId,150) && text(m.text,120) && m.amount is number && m.amount > 0 && m.amount <= 1000000 && text(m.unit,10) && text(m.date,10) && m.hora is int && m.hora >= 0 && m.hora <= 23 && m.completed is bool; }
+  match /users/{uid} {
+   allow read, delete: if owner(uid);
+   allow create: if owner(uid) && validUser(request.resource.data) && request.resource.data.get('xpGasto',0) == 0;
+   allow update: if owner(uid) && validUser(request.resource.data)
+    && (request.resource.data.get('xpGasto',0) == resource.data.get('xpGasto',0) || (
+      request.resource.data.lastRedemptionId is string && request.resource.data.lastRedemptionId.size() <= 120
+      && !exists(/databases/$(database)/documents/users/$(uid)/redemptions/$(request.resource.data.lastRedemptionId))
+      && getAfter(/databases/$(database)/documents/users/$(uid)/redemptions/$(request.resource.data.lastRedemptionId)).data.cost == request.resource.data.xpGasto - resource.data.get('xpGasto',0)
+    ));
+   match /goals/{id} { allow read, delete: if owner(uid); allow create, update: if owner(uid) && validGoal(request.resource.data); }
+   match /completedGoals/{id} { allow read, delete: if owner(uid); allow create, update: if owner(uid) && validGoal(request.resource.data); }
+   match /rewards/{id} {
+    allow read, delete: if owner(uid);
+    allow create: if owner(uid) && validReward(request.resource.data) && request.resource.data.completed == false;
+    allow update: if owner(uid) && validReward(request.resource.data) && (resource.data.completed == true ? request.resource.data.completed == true : (request.resource.data.completed == false || getAfter(/databases/$(database)/documents/users/$(uid)/redemptions/$(id)).data.redeemedAt == request.resource.data.redeemedAt));
+   }
+   match /redemptions/{id} {
+    allow read: if owner(uid);
+    allow create: if owner(uid) && validRedemption(request.resource.data)
+     && get(/databases/$(database)/documents/users/$(uid)/rewards/$(id)).data.completed == false
+     && request.resource.data.cost == get(/databases/$(database)/documents/users/$(uid)/rewards/$(id)).data.get('custoXp',0)
+     && getAfter(/databases/$(database)/documents/users/$(uid)/rewards/$(id)).data.completed == true
+     && getAfter(/databases/$(database)/documents/users/$(uid)).data.xpGasto == get(/databases/$(database)/documents/users/$(uid)).data.get('xpGasto',0) + request.resource.data.cost
+     && getAfter(/databases/$(database)/documents/users/$(uid)).data.xp >= getAfter(/databases/$(database)/documents/users/$(uid)).data.xpGasto;
+   }
+   match /goalAwards/{id} { allow read: if owner(uid); allow create: if owner(uid) && request.resource.data.keys().hasOnly(['xp','date']) && request.resource.data.xp is int && request.resource.data.xp > 0 && request.resource.data.xp <= 200 && text(request.resource.data.date,10); }
+   match /workouts/{id} { allow read, delete: if owner(uid); allow create: if owner(uid) && validWorkout(request.resource.data); allow update: if owner(uid) && validWorkout(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt; }
+   match /workoutSessions/{id} { allow read: if owner(uid); allow create: if owner(uid) && validSession(request.resource.data) && exists(/databases/$(database)/documents/users/$(uid)/workouts/$(request.resource.data.workoutId)); }
+   match /progressLogs/{id} { allow read, delete: if owner(uid); allow create, update: if owner(uid) && validLog(request.resource.data); }
+   match /weights/{id} { allow read, delete: if owner(uid); allow create, update: if owner(uid) && request.resource.data.keys().hasOnly(['date','weight']) && text(request.resource.data.date,10) && request.resource.data.weight is number && request.resource.data.weight > 0 && request.resource.data.weight <= 1000; }
+  }
     // Resumo público (perfil compartilhado com personal/amigo): qualquer um lê,
     // só o dono grava, e só com os campos do resumo (sem peso nem foto).
     match /publico/{userId} {
@@ -24,5 +83,6 @@ service cloud.firestore {
         && request.resource.data.metas is list && request.resource.data.metas.size() <= 50
         && request.resource.data.diasAtivos is list && request.resource.data.diasAtivos.size() <= 120;
     }
-  }
+
+ }
 }
