@@ -8,6 +8,8 @@ Site: https://corpo-bem.vercel.app
 
 [![CI](https://github.com/GuilhermeAraujoDeCastro/corpo-bem/actions/workflows/ci.yml/badge.svg)](https://github.com/GuilhermeAraujoDeCastro/corpo-bem/actions/workflows/ci.yml)
 
+Capturas da versão anterior às alterações locais desta revisão:
+
 | Painel | Detalhe | No celular |
 |---|---|---|
 | ![Início com sequência, XP, água, plano de treino e metas do dia](docs/screenshots/01-home.png) | ![Perfil com o gráfico de peso e o IMC](docs/screenshots/02-detalhe.png) | ![Início numa tela de celular](docs/screenshots/03-mobile.png) |
@@ -15,13 +17,13 @@ Site: https://corpo-bem.vercel.app
 ## O que tem
 
 - Cadastro com usuário e senha ou conta Google, e um onboarding que já sugere metas conforme o objetivo (perder peso, ganhar massa ou manter).
-- Metas diárias que zeram sozinhas todo dia e metas com prazo.
+- Metas diárias com verificação ao retomar a página, a cada 30 segundos e antes de registrar progresso, além de metas com prazo.
 - Atalho de água na tela inicial (+250 ml e +500 ml).
 - Planos de treino prontos (ABC, Push/Pull/Legs e corpo inteiro). O app mostra o treino da vez e passa pro próximo quando você marca que treinou.
 - Calendário das últimas 12 semanas no estilo das contribuições do GitHub.
 - Gráfico de peso e IMC, com exportação do histórico em CSV (abre direto no Excel).
-- Backup completo da conta em JSON.
-- Lojinha de recompensas com custo em XP.
+- Exportação JSON do perfil e das coleções, incluindo treinos, sessões e recibos; sem restauração desse arquivo pela interface.
+- Recompensas pessoais com custo em XP, resgate em transação e recibo único.
 - Resumo da semana que vira imagem, com botão de compartilhar pelo celular.
 - Link de perfil só leitura pra mostrar o progresso a um personal ou amigo. Peso e foto não entram nesse link.
 - Lembretes por push de água e de metas. Pra quem costuma treinar de manhã e ainda não registrou nada, o lembrete da meta chega ao meio-dia em vez das 20h.
@@ -68,11 +70,13 @@ corpo-bem/
 ## Rodando na sua máquina
 
 ```bash
-npm install
+npm ci
+npm run emulators
+# Em outro terminal:
 npm run dev
 ```
 
-O site abre em http://localhost:5311 usando o código-fonte e o Firebase de verdade.
+O site abre em [localhost:5311](http://localhost:5311) usando exclusivamente os emuladores locais. Não há fallback para o Firebase remoto se eles estiverem desligados.
 
 Pra conferir o build de produção, igual ao publicado:
 
@@ -81,7 +85,7 @@ npm run build
 npm run preview
 ```
 
-O GitHub Actions (`.github/workflows/ci.yml`) roda o build a cada push, pra pegar erro de empacotamento antes da Vercel.
+O GitHub Actions (`.github/workflows/ci.yml`) executa os testes de Node, o build e verificações de sintaxe.
 
 ## Deploy na Vercel
 
@@ -102,11 +106,11 @@ As regras ficam em `firestore.rules`. Cada conta só lê e grava o que está em 
 Pra publicar:
 
 ```bash
-npx firebase-tools login
-npx firebase-tools deploy --only firestore:rules
+# Publicação remota deve ser revisada e executada manualmente pelo autor.
+# Esta revisão usa somente emuladores locais.
 ```
 
-O projeto padrão (`web-treino`) já está em `.firebaserc`.
+O projeto padrão desta cópia (`demo-auditoria-corpo`) é fictício e está em `.firebaserc`. Não publique regras durante esta revisão.
 
 ## Trocando as chaves
 
@@ -120,6 +124,39 @@ Vale trocar as chaves VAPID e a conta de serviço de tempos em tempos:
 ## Testando os lembretes sem incomodar ninguém
 
 Pra testar push sem mandar notificação pra usuário de verdade, crie um segundo projeto no Firebase só pra testes e aponte um deploy de preview da Vercel pra ele: variáveis `FIREBASE_SERVICE_ACCOUNT` e `CRON_SECRET` próprias no ambiente Preview e, no preview, o `firebaseConfig` de `js/firebase-config.js` trocado pelo do projeto de teste. A resposta da function traz quantos pushes foram enviados, quantos falharam e quantas inscrições mortas foram removidas.
+
+## Treinos personalizados e agenda
+
+Cada modelo admite até 8 exercícios. Esse limite permite validar todos os campos dentro do orçamento de expressões das regras do Firestore; modelos e sessões têm o mesmo limite.
+
+“Meus treinos” permite criar e editar modelos com exercícios, séries, repetições e carga em kg. Os planos prontos continuam disponíveis. Salvar modelo não registra uma sessão: ajuste os valores usados e selecione “Registrar treino de hoje”. Cada sessão conserva seu snapshot; alterar o modelo não muda o histórico. A tabela compara o volume com o registro anterior do mesmo treino. Volume significa séries × repetições × carga, sem estimar esforço ou resultados físicos.
+
+“Descanso e pausas” guarda dias da semana e uma pausa opcional com início e fim, inclusive a data final. Esses dias preservam a sequência sem conceder XP. Limpe as duas datas para remover a pausa. É possível registrar um treino personalizado opcional no descanso; as metas diárias reabrem no próximo dia ativo.
+
+Modelos usam `users/{uid}/workouts`; sessões usam `workoutSessions`; resgates usam `redemptions`; concessões de XP usam `goalAwards`. A agenda fica no perfil privado. Nenhuma dessas coleções entra no resumo público.
+
+## Ferramentas, testes e limites
+
+Ao entrar ou trocar de conta, o painel anterior é limpo e fica oculto durante o carregamento da sessão atual. Respostas atrasadas, inclusive ao sair e voltar à mesma conta, são descartadas. Se o perfil ou o carregamento principal falhar, a aplicação volta ao login com aviso; os cards da conta anterior não são reaproveitados. As regressões executam os handlers reais com consultas lentas e com erro, perfil antigo atrasado, A → B → A e logout concluído depois de um novo login.
+
+Use Node.js 22 (versão da CI) ou 24 e npm. Os emuladores precisam de Java 21 e Firebase CLI 14.22.0, executado localmente pelo script `emulators`. Em loopback (`localhost`, `127.0.0.1`, `[::1]`), o cliente usa exclusivamente `demo-auditoria-corpo`, com Auth 9092 e Firestore 8082. A restauração automática de lembretes fica desligada. Bibliotecas por CDN ainda precisam de rede.
+
+```bash
+npm test
+npm run test:emulator
+npm run build
+npm run preview
+```
+
+Os testes de Node cobrem a função real de edição, renovação do dia e progresso fresco em dois aparelhos simulados, XP único, resgate, calendário, pausas e treino. `test:emulator` exige os emuladores ligados e verifica regras, isolamento, tipos, replay de resgate, treinos, sessões e agenda. Testes em memória não substituem jornadas no navegador ou a concorrência com SDK real.
+
+As datas seguem o fuso do aparelho. Metas diárias têm `progressDay`; a transação preserva o progresso que outro aparelho já registrou no dia. Progresso e resgates exigem conexão e não são apresentados como sucesso quando falham. A PWA abre arquivos em cache, mas não confirma essas operações offline. A renovação atômica aceita até 300 metas por conta.
+
+Use dados fictícios no onboarding e nos treinos. Contas com nome de usuário usam e-mail interno `nome@webtreino.local` e não têm recuperação automática por e-mail. `.env.example` lista as credenciais do servidor sem valores. Nenhum teste local precisa de conta de serviço ou envia notificações.
+
+As regras revisadas são um protótipo local e não foram publicadas. Dados legados não são apagados nem estornados automaticamente. Confira [migração e limites](docs/migracao-local.md) e [modelo das regras](docs/rules-model.md).
+
+Nesta revisão, o Edge local confirmou edição com alvo negativo recusada, resgate persistente, registro de treinos e evolução, pausa sem perder a sequência, virada do dia com relógio controlado e troca de conta durante uma consulta lenta. O ensaio de resgate concorrente usou duas instâncias do SDK no emulador. As jornadas usaram dados fictícios, incluíram controles por teclado e viewport de 390 px e não fazem parte de `npm test`.
 
 ## Licença e contato
 
